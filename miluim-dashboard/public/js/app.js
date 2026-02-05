@@ -1,7 +1,6 @@
-// ===== CONFIG =====
 const API = window.location.origin + '/api';
 let currentYear = null;
-let pendingImportData = null;
+let pendingImport = null; // { type: 'mecano'|'bl', data: [...] }
 
 // ===== HELPERS =====
 
@@ -14,667 +13,506 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-function formatMoney(amount) {
+function fmt(amount) {
   if (amount == null || isNaN(amount)) return '0';
-  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 0 }).format(amount);
+  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  if (isNaN(d)) return dateStr;
-  return d.toLocaleDateString('he-IL');
+function fmtDate(d) {
+  if (!d) return '-';
+  if (d.length === 7) return d; // yyyy-mm
+  const parts = d.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return d;
 }
 
-const MONTH_NAMES = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 
-function monthLabel(year, month) {
-  return `${MONTH_NAMES[month - 1]} ${year}`;
-}
+function monthLabel(y, m) { return `${MONTHS[m-1]} ${y}`; }
 
-function toast(message, type = 'success') {
-  const container = document.getElementById('toastContainer');
+function toast(msg, type = 'success') {
+  const c = document.getElementById('toastContainer');
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.textContent = message;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 4500);
 }
 
-function statusBadge(status) {
+function badge(status) {
   const labels = { paid: 'שולם', partial: 'חלקי', pending: 'ממתין' };
   return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
 }
 
-// ===== TABS =====
-
-function switchTab(tabName) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-
-  const panel = document.getElementById('tab-' + tabName);
-  if (panel) panel.classList.add('active');
-
-  const btn = document.querySelector(`.nav-btn[data-tab="${tabName}"]`);
-  if (btn) btn.classList.add('active');
-
-  // Load data for tab
-  if (tabName === 'dashboard') loadDashboard();
-  if (tabName === 'employees') loadEmployees();
-  if (tabName === 'duties') { loadDutyFilters(); loadDuties(); }
-  if (tabName === 'payments') loadPayments();
+function moneyClass(val) {
+  if (val > 0) return 'money-negative';
+  if (val < 0) return 'money-positive';
+  return '';
 }
 
-// ===== YEAR SELECTOR =====
+// ===== TABS =====
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById('tab-' + name);
+  if (panel) panel.classList.add('active');
+  const btn = document.querySelector(`.nav-btn[data-tab="${name}"]`);
+  if (btn) btn.classList.add('active');
+
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'employees') loadEmployees();
+  if (name === 'duties') { loadDutyFilters(); loadDuties(); }
+  if (name === 'bl-payments') { loadBLFilters(); loadBLPayments(); }
+}
+
+// ===== YEAR =====
 
 async function loadYears() {
   const years = await api('/years');
-  const select = document.getElementById('yearSelect');
-  select.innerHTML = '<option value="">כל השנים</option>';
+  const sel = document.getElementById('yearSelect');
+  sel.innerHTML = '<option value="">כל השנים</option>';
   years.forEach(y => {
-    const opt = document.createElement('option');
-    opt.value = y;
-    opt.textContent = y;
-    select.appendChild(opt);
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    sel.appendChild(o);
   });
-
-  // Default to current year if available
-  const thisYear = new Date().getFullYear();
-  if (years.includes(thisYear)) {
-    select.value = thisYear;
-    currentYear = thisYear;
-  }
+  if (years.includes(2025)) { sel.value = 2025; currentYear = 2025; }
+  else if (years.length) { sel.value = years[0]; currentYear = years[0]; }
 }
 
 function onYearChange() {
-  const val = document.getElementById('yearSelect').value;
-  currentYear = val ? parseInt(val) : null;
-  // Refresh current tab
-  const activeTab = document.querySelector('.nav-btn.active');
-  if (activeTab) {
-    switchTab(activeTab.dataset.tab);
-  }
+  const v = document.getElementById('yearSelect').value;
+  currentYear = v ? parseInt(v) : null;
+  const active = document.querySelector('.nav-btn.active');
+  if (active) switchTab(active.dataset.tab);
 }
 
 // ===== DASHBOARD =====
 
 async function loadDashboard() {
-  const yearParam = currentYear ? `?year=${currentYear}` : '';
-  const stats = await api('/stats' + yearParam);
+  const q = currentYear ? `?year=${currentYear}` : '';
+  const s = await api('/stats' + q);
 
-  document.getElementById('statEmployees').textContent = stats.totalEmployees;
-  document.getElementById('statDays').textContent = stats.totalDays;
-  document.getElementById('statExpected').textContent = formatMoney(stats.totalExpected);
-  document.getElementById('statPaid').textContent = formatMoney(stats.totalPaid);
-  document.getElementById('statBalance').textContent = formatMoney(stats.balance);
-  document.getElementById('statPending').textContent = stats.pendingCount;
+  document.getElementById('statEmployees').textContent = s.totalEmployees;
+  document.getElementById('statDays').textContent = s.totalDays;
+  document.getElementById('statEmployerPay').textContent = fmt(s.totalEmployerPay);
+  document.getElementById('statExpectedBL').textContent = fmt(s.totalExpectedBL);
+  document.getElementById('statBLPaid').textContent = fmt(s.totalBLPaid);
+  document.getElementById('statBLBalance').textContent = fmt(s.blBalance);
+  document.getElementById('statPending').textContent = s.pendingCount;
+  document.getElementById('statDifference').textContent = fmt(s.totalDifference);
 
-  // Color the balance card
-  const balanceCard = document.getElementById('balanceCard');
-  balanceCard.classList.remove('success', 'error', 'warning');
-  if (stats.balance === 0 && stats.totalExpected > 0) {
-    balanceCard.classList.add('success');
-  } else if (stats.balance > 0) {
-    balanceCard.classList.add('error');
-  }
+  const bc = document.getElementById('balanceCard');
+  bc.classList.remove('success','error','warning');
+  if (s.blBalance === 0 && s.totalExpectedBL > 0) bc.classList.add('success');
+  else if (s.blBalance > 0) bc.classList.add('error');
 
   // Alerts
-  const alertsEl = document.getElementById('dashboardAlerts');
-  alertsEl.innerHTML = '';
-  if (stats.pendingCount > 0) {
-    alertsEl.innerHTML += `<div class="alert alert-warning">יש ${stats.pendingCount} רשומות שירות שעדיין לא שולמו במלואן</div>`;
-  }
-  if (stats.balance > 5000) {
-    alertsEl.innerHTML += `<div class="alert alert-error">יתרה לגבייה: ${formatMoney(stats.balance)} - כדאי לבדוק מול ביטוח לאומי</div>`;
-  }
+  const alerts = document.getElementById('dashboardAlerts');
+  alerts.innerHTML = '';
+  if (s.pendingCount > 0)
+    alerts.innerHTML += `<div class="alert alert-warning">${s.pendingCount} תקופות שירות עדיין לא שולמו במלואן מב"ל</div>`;
+  if (s.blBalance > 5000)
+    alerts.innerHTML += `<div class="alert alert-error">יתרה לגבייה מב"ל: ${fmt(s.blBalance)} - כדאי לבדוק</div>`;
 
   // Monthly summary
-  await loadMonthlySummary();
-}
-
-async function loadMonthlySummary() {
-  const yearParam = currentYear ? `?year=${currentYear}` : '';
-  const duties = await api('/duties' + yearParam);
-
+  const duties = await api('/duties' + q);
   const container = document.getElementById('monthlySummary');
+  if (!duties.length) { container.innerHTML = '<p class="empty-text">אין נתונים</p>'; return; }
 
-  if (duties.length === 0) {
-    container.innerHTML = '<p class="empty-text">יש לייבא נתונים כדי לראות סיכום</p>';
-    return;
-  }
-
-  // Group by month
   const byMonth = {};
   duties.forEach(d => {
-    const key = `${d.year}-${String(d.month).padStart(2, '0')}`;
-    if (!byMonth[key]) {
-      byMonth[key] = { year: d.year, month: d.month, duties: [], totalDays: 0, totalExpected: 0, totalPaid: 0 };
-    }
-    byMonth[key].duties.push(d);
-    byMonth[key].totalDays += d.total_days || 0;
-    byMonth[key].totalExpected += d.expected_amount || 0;
-    byMonth[key].totalPaid += d.total_paid || 0;
+    const k = `${d.year}-${String(d.month).padStart(2,'0')}`;
+    if (!byMonth[k]) byMonth[k] = { year: d.year, month: d.month, count: 0, days: 0, employer: 0, expectedBL: 0, paidBL: 0, diff: 0 };
+    byMonth[k].count++;
+    byMonth[k].days += d.total_days || 0;
+    byMonth[k].employer += d.employer_payment || 0;
+    byMonth[k].expectedBL += d.expected_bl || 0;
+    byMonth[k].paidBL += d.total_bl_paid || 0;
+    byMonth[k].diff += d.difference_amount || 0;
   });
 
-  const sorted = Object.values(byMonth).sort((a, b) => {
-    if (a.year !== b.year) return b.year - a.year;
-    return b.month - a.month;
-  });
-
+  const sorted = Object.values(byMonth).sort((a,b) => a.year !== b.year ? b.year-a.year : b.month-a.month);
   container.innerHTML = sorted.map(m => {
-    const balance = m.totalExpected - m.totalPaid;
-    const paidPct = m.totalExpected > 0 ? Math.round(m.totalPaid / m.totalExpected * 100) : 0;
-    const statusColor = paidPct >= 100 ? 'var(--success)' : paidPct > 0 ? 'var(--warning)' : 'var(--error)';
-
+    const bal = m.expectedBL - m.paidBL;
+    const pct = m.expectedBL > 0 ? Math.round(m.paidBL / m.expectedBL * 100) : 0;
+    const color = pct >= 100 ? 'var(--success)' : pct > 0 ? 'var(--warning)' : 'var(--error)';
     return `
-      <div class="month-card" style="border-right-color: ${statusColor}">
+      <div class="month-card" style="border-right-color:${color}">
         <div class="month-card-title">${monthLabel(m.year, m.month)}</div>
-        <div class="month-card-row"><span>עובדים:</span> <strong>${m.duties.length}</strong></div>
-        <div class="month-card-row"><span>ימים:</span> <strong>${m.totalDays}</strong></div>
-        <div class="month-card-row"><span>צפוי:</span> <strong>${formatMoney(m.totalExpected)}</strong></div>
-        <div class="month-card-row"><span>שולם:</span> <strong style="color:${statusColor}">${formatMoney(m.totalPaid)} (${paidPct}%)</strong></div>
-        ${balance > 0 ? `<div class="month-card-row"><span>יתרה:</span> <strong style="color:var(--error)">${formatMoney(balance)}</strong></div>` : ''}
-      </div>
-    `;
+        <div class="month-card-row"><span>עובדים/תקופות:</span><strong>${m.count}</strong></div>
+        <div class="month-card-row"><span>ימים:</span><strong>${m.days}</strong></div>
+        <div class="month-card-row"><span>מעסיק:</span><strong>${fmt(m.employer)}</strong></div>
+        <div class="month-card-row"><span>צפוי ב"ל:</span><strong>${fmt(m.expectedBL)}</strong></div>
+        <div class="month-card-row"><span>התקבל:</span><strong style="color:${color}">${fmt(m.paidBL)} (${pct}%)</strong></div>
+        ${bal > 0 ? `<div class="month-card-row"><span>יתרה:</span><strong style="color:var(--error)">${fmt(bal)}</strong></div>` : ''}
+        ${m.diff !== 0 ? `<div class="month-card-row"><span>הפרשים:</span><strong>${fmt(m.diff)}</strong></div>` : ''}
+      </div>`;
   }).join('');
-}
-
-// ===== IMPORT =====
-
-function setupFileUpload() {
-  const uploadBox = document.getElementById('uploadBox');
-  const fileInput = document.getElementById('fileInput');
-
-  uploadBox.addEventListener('click', () => fileInput.click());
-
-  ['dragenter', 'dragover'].forEach(e => {
-    uploadBox.addEventListener(e, ev => { ev.preventDefault(); uploadBox.classList.add('dragover'); });
-  });
-  ['dragleave', 'drop'].forEach(e => {
-    uploadBox.addEventListener(e, ev => { ev.preventDefault(); uploadBox.classList.remove('dragover'); });
-  });
-
-  uploadBox.addEventListener('drop', ev => {
-    const files = ev.dataTransfer.files;
-    if (files.length) processFile(files[0]);
-  });
-
-  fileInput.addEventListener('change', ev => {
-    if (ev.target.files.length) processFile(ev.target.files[0]);
-  });
-}
-
-async function processFile(file) {
-  toast('מעבד קובץ...', 'info');
-
-  try {
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(sheet);
-
-    if (raw.length === 0) {
-      toast('הקובץ ריק', 'error');
-      return;
-    }
-
-    // Process and group the data
-    const processed = processKanoData(raw);
-
-    if (processed.length === 0) {
-      toast('לא נמצאו נתונים תקינים', 'error');
-      return;
-    }
-
-    // Show preview
-    pendingImportData = processed;
-    showImportPreview(processed, raw.length);
-
-  } catch (err) {
-    toast('שגיאה בעיבוד הקובץ: ' + err.message, 'error');
-  }
-}
-
-function parseExcelDate(val) {
-  if (!val) return null;
-
-  // Already ISO format
-  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-
-  // Hebrew format: dd.mm.yyyy
-  if (typeof val === 'string' && val.includes('.')) {
-    const parts = val.trim().split('.');
-    if (parts.length === 3) {
-      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-    }
-  }
-
-  // US format: mm/dd/yyyy or dd/mm/yyyy
-  if (typeof val === 'string' && val.includes('/')) {
-    const parts = val.split('/');
-    if (parts.length === 3) {
-      // Assume dd/mm/yyyy for Israeli context
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      const year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-      return `${year}-${month}-${day}`;
-    }
-  }
-
-  // Excel serial number
-  if (typeof val === 'number') {
-    const d = new Date((val - 25569) * 86400 * 1000);
-    return d.toISOString().split('T')[0];
-  }
-
-  // Date object
-  if (val instanceof Date) {
-    return val.toISOString().split('T')[0];
-  }
-
-  return null;
-}
-
-function processKanoData(rows) {
-  const grouped = {};
-
-  rows.forEach(row => {
-    // Skip empty rows
-    const vals = Object.values(row);
-    if (vals.every(v => !v || v === '')) return;
-
-    // Extract fields - support multiple column name formats
-    const fullName = row['שם עובד'] || row['שם'] || '';
-    const tz = row['ת.ז.'] || row['tz'] || row['תעודת זהות'] || fullName.trim();
-    const rawDate = row['תאריך'] || row['date'] || '';
-    const department = row['מחלקה'] || row['department'] || '';
-    const dailyRate = parseFloat(row['תעריף יומי'] || row['daily_rate'] || 0);
-
-    const dutyDate = parseExcelDate(rawDate);
-    if (!fullName || !dutyDate) return;
-
-    // Check if marked as miluim (if column exists)
-    if ('מילואים' in row && row['מילואים'] !== 1 && row['מילואים'] !== '1' && row['מילואים'] !== true) return;
-
-    // Split name
-    const nameParts = fullName.trim().split(/\s+/);
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
-
-    // Group key: employee + year + month
-    const year = parseInt(dutyDate.substring(0, 4));
-    const month = parseInt(dutyDate.substring(5, 7));
-    const key = `${tz}_${year}_${month}`;
-
-    if (!grouped[key]) {
-      grouped[key] = {
-        tz: tz,
-        first_name: firstName,
-        last_name: lastName,
-        department: department,
-        daily_rate: dailyRate || 500,
-        year: year,
-        month: month,
-        dates: []
-      };
-    }
-
-    if (!grouped[key].dates.includes(dutyDate)) {
-      grouped[key].dates.push(dutyDate);
-    }
-    if (dailyRate > 0 && grouped[key].daily_rate === 500) {
-      grouped[key].daily_rate = dailyRate;
-    }
-  });
-
-  return Object.values(grouped).map(g => ({
-    ...g,
-    dates: g.dates.sort(),
-    total_days: g.dates.length,
-    expected_amount: g.dates.length * g.daily_rate
-  }));
-}
-
-function showImportPreview(data, rawCount) {
-  const preview = document.getElementById('importPreview');
-  const statsEl = document.getElementById('previewStats');
-  const headerEl = document.getElementById('previewHeader');
-  const bodyEl = document.getElementById('previewBody');
-
-  const uniqueEmployees = new Set(data.map(d => d.tz));
-  const totalDays = data.reduce((s, d) => s + d.total_days, 0);
-
-  statsEl.innerHTML = `
-    <div class="preview-stat">שורות בקובץ: <strong>${rawCount}</strong></div>
-    <div class="preview-stat">עובדים: <strong>${uniqueEmployees.size}</strong></div>
-    <div class="preview-stat">רשומות חודשיות: <strong>${data.length}</strong></div>
-    <div class="preview-stat">ימי שירות: <strong>${totalDays}</strong></div>
-  `;
-
-  headerEl.innerHTML = '<th>עובד</th><th>ת.ז.</th><th>מחלקה</th><th>חודש</th><th>ימים</th><th>סכום צפוי</th>';
-
-  bodyEl.innerHTML = data.map(d => `
-    <tr>
-      <td>${d.first_name} ${d.last_name}</td>
-      <td>${d.tz}</td>
-      <td>${d.department || '-'}</td>
-      <td>${monthLabel(d.year, d.month)}</td>
-      <td class="money">${d.total_days}</td>
-      <td class="money">${formatMoney(d.expected_amount)}</td>
-    </tr>
-  `).join('');
-
-  preview.style.display = 'block';
-}
-
-async function confirmImport() {
-  if (!pendingImportData) return;
-
-  try {
-    const result = await api('/import', {
-      method: 'POST',
-      body: { data: pendingImportData }
-    });
-
-    if (result.success) {
-      toast(`יובאו ${result.importedEmployees} עובדים ו-${result.importedDuties} רשומות`, 'success');
-      pendingImportData = null;
-      document.getElementById('importPreview').style.display = 'none';
-      document.getElementById('fileInput').value = '';
-      loadYears();
-      loadDashboard();
-    } else {
-      toast('שגיאה: ' + (result.error || 'Unknown'), 'error');
-    }
-  } catch (err) {
-    toast('שגיאה בייבוא: ' + err.message, 'error');
-  }
-}
-
-function cancelImport() {
-  pendingImportData = null;
-  document.getElementById('importPreview').style.display = 'none';
-  document.getElementById('fileInput').value = '';
 }
 
 // ===== EMPLOYEES =====
 
 async function loadEmployees() {
-  const yearParam = currentYear ? `?year=${currentYear}` : '';
-  const employees = await api('/employees' + yearParam);
+  const q = currentYear ? `?year=${currentYear}` : '';
+  const emps = await api('/employees' + q);
   const tbody = document.getElementById('employeesBody');
 
-  if (employees.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-text">אין עובדים' + (currentYear ? ` בשנת ${currentYear}` : '') + '</td></tr>';
+  if (!emps.length) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-text">אין עובדים${currentYear ? ` בשנת ${currentYear}` : ''}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = employees.map(emp => `
+  tbody.innerHTML = emps.map(e => `
     <tr>
-      <td><strong>${emp.first_name} ${emp.last_name}</strong></td>
-      <td>${emp.tz}</td>
-      <td>${emp.department || '-'}</td>
-      <td class="money">${emp.total_days}</td>
-      <td class="money">${formatMoney(emp.total_expected)}</td>
-      <td class="money money-positive">${formatMoney(emp.total_paid)}</td>
-      <td class="money ${emp.balance > 0 ? 'money-negative' : 'money-positive'}">${formatMoney(emp.balance)}</td>
-      <td>
-        <button class="btn btn-sm btn-danger" onclick="deleteEmployee(${emp.id})">מחק</button>
-      </td>
+      <td><strong>${e.full_name || e.first_name + ' ' + e.last_name}</strong></td>
+      <td>${e.tz || '-'}</td>
+      <td>${e.department || '-'}</td>
+      <td class="money">${fmt(e.current_daily_rate || e.daily_rate)}</td>
+      <td class="money">${e.total_days}</td>
+      <td class="money">${fmt(e.total_expected_bl)}</td>
+      <td class="money money-positive">${fmt(e.total_bl_paid)}</td>
+      <td class="money ${e.bl_balance > 0 ? 'money-negative' : ''}">${fmt(e.bl_balance)}</td>
+      <td class="money ${e.total_difference < 0 ? 'money-negative' : ''}">${fmt(e.total_difference)}</td>
+      <td>${e.status || '-'}</td>
     </tr>
   `).join('');
 
-  // Summary row
-  const totalDays = employees.reduce((s, e) => s + e.total_days, 0);
-  const totalExpected = employees.reduce((s, e) => s + e.total_expected, 0);
-  const totalPaid = employees.reduce((s, e) => s + e.total_paid, 0);
-  const totalBalance = employees.reduce((s, e) => s + e.balance, 0);
+  // Summary
+  const totals = emps.reduce((t, e) => ({
+    days: t.days + e.total_days,
+    exp: t.exp + e.total_expected_bl,
+    paid: t.paid + e.total_bl_paid,
+    bal: t.bal + e.bl_balance,
+    diff: t.diff + e.total_difference
+  }), { days: 0, exp: 0, paid: 0, bal: 0, diff: 0 });
 
   tbody.innerHTML += `
     <tr class="summary-row">
-      <td colspan="3"><strong>סה"כ</strong></td>
-      <td class="money">${totalDays}</td>
-      <td class="money">${formatMoney(totalExpected)}</td>
-      <td class="money money-positive">${formatMoney(totalPaid)}</td>
-      <td class="money ${totalBalance > 0 ? 'money-negative' : 'money-positive'}">${formatMoney(totalBalance)}</td>
+      <td colspan="4"><strong>סה"כ (${emps.length} עובדים)</strong></td>
+      <td class="money">${totals.days}</td>
+      <td class="money">${fmt(totals.exp)}</td>
+      <td class="money money-positive">${fmt(totals.paid)}</td>
+      <td class="money ${totals.bal > 0 ? 'money-negative' : ''}">${fmt(totals.bal)}</td>
+      <td class="money">${fmt(totals.diff)}</td>
       <td></td>
-    </tr>
-  `;
+    </tr>`;
 }
 
-function showAddEmployee() {
-  document.getElementById('addEmployeeForm').style.display = 'block';
-}
-
+function showAddEmployee() { document.getElementById('addEmployeeForm').style.display = 'block'; }
 function hideAddEmployee() {
   document.getElementById('addEmployeeForm').style.display = 'none';
-  ['empTz', 'empFirstName', 'empLastName', 'empDept'].forEach(id => document.getElementById(id).value = '');
+  ['empTz','empFirstName','empLastName','empDept'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('empRate').value = '500';
 }
 
 async function saveEmployee() {
   const tz = document.getElementById('empTz').value.trim();
-  const firstName = document.getElementById('empFirstName').value.trim();
-  const lastName = document.getElementById('empLastName').value.trim();
+  const fn = document.getElementById('empFirstName').value.trim();
+  const ln = document.getElementById('empLastName').value.trim();
   const dept = document.getElementById('empDept').value.trim();
   const rate = parseFloat(document.getElementById('empRate').value) || 500;
-
-  if (!tz || !firstName || !lastName) {
-    toast('יש למלא ת.ז., שם פרטי ושם משפחה', 'error');
-    return;
-  }
-
-  await api('/employees', { method: 'POST', body: { tz, first_name: firstName, last_name: lastName, department: dept, daily_rate: rate } });
-  toast('עובד נוסף בהצלחה');
+  if (!fn || !ln) { toast('יש למלא שם פרטי ושם משפחה', 'error'); return; }
+  await api('/employees', { method: 'POST', body: { tz, first_name: fn, last_name: ln, full_name: `${fn} ${ln}`, department: dept, daily_rate: rate } });
+  toast('עובד נוסף');
   hideAddEmployee();
-  loadEmployees();
-}
-
-async function deleteEmployee(id) {
-  if (!confirm('למחוק את העובד וכל הנתונים שלו?')) return;
-  await api(`/employees/${id}`, { method: 'DELETE' });
-  toast('עובד נמחק');
   loadEmployees();
 }
 
 // ===== DUTIES =====
 
 async function loadDutyFilters() {
-  // Load months
   if (currentYear) {
     const months = await api(`/months/${currentYear}`);
-    const monthSelect = document.getElementById('dutyMonthFilter');
-    monthSelect.innerHTML = '<option value="">כל החודשים</option>';
-    months.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = MONTH_NAMES[m - 1];
-      monthSelect.appendChild(opt);
-    });
+    const ms = document.getElementById('dutyMonthFilter');
+    ms.innerHTML = '<option value="">כל החודשים</option>';
+    months.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = MONTHS[m-1]; ms.appendChild(o); });
   }
-
-  // Load employees
-  const employees = await api('/employees');
-  const empSelect = document.getElementById('dutyEmployeeFilter');
-  empSelect.innerHTML = '<option value="">כל העובדים</option>';
-  employees.forEach(emp => {
-    const opt = document.createElement('option');
-    opt.value = emp.id;
-    opt.textContent = `${emp.first_name} ${emp.last_name}`;
-    empSelect.appendChild(opt);
-  });
+  const emps = await api('/employees');
+  const es = document.getElementById('dutyEmployeeFilter');
+  es.innerHTML = '<option value="">כל העובדים</option>';
+  emps.forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.full_name || `${e.first_name} ${e.last_name}`; es.appendChild(o); });
 }
 
 async function loadDuties() {
-  let params = [];
-  if (currentYear) params.push(`year=${currentYear}`);
+  let p = [];
+  if (currentYear) p.push(`year=${currentYear}`);
+  const mf = document.getElementById('dutyMonthFilter');
+  if (mf && mf.value) p.push(`month=${mf.value}`);
+  const ef = document.getElementById('dutyEmployeeFilter');
+  if (ef && ef.value) p.push(`employee_id=${ef.value}`);
+  const q = p.length ? '?' + p.join('&') : '';
 
-  const monthFilter = document.getElementById('dutyMonthFilter');
-  if (monthFilter && monthFilter.value) params.push(`month=${monthFilter.value}`);
-
-  const empFilter = document.getElementById('dutyEmployeeFilter');
-  if (empFilter && empFilter.value) params.push(`employee_id=${empFilter.value}`);
-
-  const query = params.length ? '?' + params.join('&') : '';
-  const duties = await api('/duties' + query);
+  const duties = await api('/duties' + q);
   const tbody = document.getElementById('dutiesBody');
 
-  if (duties.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-text">אין רשומות</td></tr>';
-    return;
-  }
+  if (!duties.length) { tbody.innerHTML = '<tr><td colspan="13" class="empty-text">אין רשומות</td></tr>'; return; }
 
   tbody.innerHTML = duties.map(d => `
     <tr>
       <td><strong>${d.employee_name}</strong></td>
-      <td>${monthLabel(d.year, d.month)}</td>
+      <td>${fmtDate(d.start_date)}${d.end_date && d.end_date !== d.start_date ? ' - ' + fmtDate(d.end_date) : ''}</td>
       <td class="money">${d.total_days}</td>
-      <td class="money">${formatMoney(d.expected_amount)}</td>
-      <td class="money money-positive">${formatMoney(d.total_paid)}</td>
-      <td class="money ${d.balance > 0 ? 'money-negative' : 'money-positive'}">${formatMoney(d.balance)}</td>
-      <td>${statusBadge(d.payment_status)}</td>
-      <td>
-        <button class="btn btn-sm btn-danger" onclick="deleteDuty(${d.id})">מחק</button>
-      </td>
+      <td class="money">${d.weekdays || '-'}</td>
+      <td class="money">${d.fridays || '-'}</td>
+      <td class="money">${d.saturdays || '-'}</td>
+      <td class="money">${fmt(d.daily_rate)}</td>
+      <td class="money">${fmt(d.employer_payment)}</td>
+      <td class="money">${fmt(d.expected_bl)}</td>
+      <td class="money money-positive">${fmt(d.total_bl_paid)}</td>
+      <td class="money ${d.difference_amount < 0 ? 'money-negative' : ''}">${d.difference_amount ? fmt(d.difference_amount) : '-'}</td>
+      <td>${badge(d.payment_status)}</td>
+      <td class="notes-cell">${d.notes || ''}</td>
     </tr>
   `).join('');
 
   // Summary
-  const totalDays = duties.reduce((s, d) => s + d.total_days, 0);
-  const totalExpected = duties.reduce((s, d) => s + d.expected_amount, 0);
-  const totalPaid = duties.reduce((s, d) => s + d.total_paid, 0);
-  const totalBalance = duties.reduce((s, d) => s + d.balance, 0);
+  const t = duties.reduce((s, d) => ({
+    days: s.days + (d.total_days||0),
+    emp: s.emp + (d.employer_payment||0),
+    exp: s.exp + (d.expected_bl||0),
+    paid: s.paid + (d.total_bl_paid||0),
+    diff: s.diff + (d.difference_amount||0)
+  }), { days:0, emp:0, exp:0, paid:0, diff:0 });
 
   tbody.innerHTML += `
     <tr class="summary-row">
-      <td colspan="2"><strong>סה"כ</strong></td>
-      <td class="money">${totalDays}</td>
-      <td class="money">${formatMoney(totalExpected)}</td>
-      <td class="money money-positive">${formatMoney(totalPaid)}</td>
-      <td class="money ${totalBalance > 0 ? 'money-negative' : 'money-positive'}">${formatMoney(totalBalance)}</td>
+      <td colspan="2"><strong>סה"כ (${duties.length} תקופות)</strong></td>
+      <td class="money">${t.days}</td>
+      <td colspan="3"></td>
       <td></td>
-      <td></td>
-    </tr>
-  `;
+      <td class="money">${fmt(t.emp)}</td>
+      <td class="money">${fmt(t.exp)}</td>
+      <td class="money money-positive">${fmt(t.paid)}</td>
+      <td class="money">${fmt(t.diff)}</td>
+      <td colspan="2"></td>
+    </tr>`;
 }
 
-async function deleteDuty(id) {
-  if (!confirm('למחוק רשומת שירות זו?')) return;
-  await api(`/duties/${id}`, { method: 'DELETE' });
-  toast('רשומה נמחקה');
-  loadDuties();
+// ===== BL PAYMENTS =====
+
+async function loadBLFilters() {
+  const emps = await api('/employees');
+  const es = document.getElementById('blEmployeeFilter');
+  es.innerHTML = '<option value="">כל העובדים</option>';
+  emps.forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.full_name || `${e.first_name} ${e.last_name}`; es.appendChild(o); });
 }
 
-// ===== PAYMENTS =====
+async function loadBLPayments() {
+  let p = [];
+  const ef = document.getElementById('blEmployeeFilter');
+  if (ef && ef.value) p.push(`employee_id=${ef.value}`);
+  const q = p.length ? '?' + p.join('&') : '';
 
-async function loadPayments() {
-  const payments = await api('/payments');
-  const tbody = document.getElementById('paymentsBody');
+  const payments = await api('/bl-payments' + q);
+  const tbody = document.getElementById('blPaymentsBody');
 
-  if (payments.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-text">אין תשלומים רשומים</td></tr>';
-    return;
-  }
+  if (!payments.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-text">אין תשלומים</td></tr>'; return; }
 
   tbody.innerHTML = payments.map(p => `
     <tr>
       <td><strong>${p.employee_name}</strong></td>
-      <td>${p.duty_month || '-'}</td>
-      <td class="money money-positive">${formatMoney(p.amount)}</td>
-      <td>${formatDate(p.payment_date)}</td>
-      <td>${p.reference || '-'}</td>
-      <td>${p.notes || '-'}</td>
-      <td>
-        <button class="btn btn-sm btn-danger" onclick="deletePayment(${p.id})">מחק</button>
-      </td>
+      <td>${fmtDate(p.start_date)}${p.end_date && p.end_date !== p.start_date ? ' - ' + fmtDate(p.end_date) : ''}</td>
+      <td class="money">${fmt(p.tagmul)}</td>
+      <td class="money">${fmt(p.compensation_20)}</td>
+      <td class="money">${fmt(p.supplement_40)}</td>
+      <td class="money money-positive">${fmt(p.total_to_employee)}</td>
+      <td>${p.batch_number || '-'}</td>
+      <td>${fmtDate(p.payment_date)}</td>
+      <td>${p.source_file || '-'}</td>
     </tr>
   `).join('');
 
-  // Summary
-  const total = payments.reduce((s, p) => s + p.amount, 0);
+  const t = payments.reduce((s, p) => ({
+    tag: s.tag + (p.tagmul||0),
+    c20: s.c20 + (p.compensation_20||0),
+    s40: s.s40 + (p.supplement_40||0),
+    total: s.total + (p.total_to_employee||0)
+  }), { tag:0, c20:0, s40:0, total:0 });
+
   tbody.innerHTML += `
     <tr class="summary-row">
-      <td colspan="2"><strong>סה"כ</strong></td>
-      <td class="money money-positive">${formatMoney(total)}</td>
-      <td colspan="4"></td>
-    </tr>
-  `;
+      <td colspan="2"><strong>סה"כ (${payments.length} תשלומים)</strong></td>
+      <td class="money">${fmt(t.tag)}</td>
+      <td class="money">${fmt(t.c20)}</td>
+      <td class="money">${fmt(t.s40)}</td>
+      <td class="money money-positive">${fmt(t.total)}</td>
+      <td colspan="3"></td>
+    </tr>`;
 }
 
-function showAddPayment() {
-  document.getElementById('addPaymentForm').style.display = 'block';
-  loadEmployeesForPayment();
-  document.getElementById('payDate').value = new Date().toISOString().split('T')[0];
-}
+// ===== IMPORT =====
 
-function hideAddPayment() {
-  document.getElementById('addPaymentForm').style.display = 'none';
-  ['payAmount', 'payRef', 'payNotes'].forEach(id => document.getElementById(id).value = '');
-}
+function setupImport() {
+  document.querySelectorAll('.upload-box').forEach(box => {
+    const input = box.querySelector('.file-input');
+    const type = input.dataset.type;
 
-async function loadEmployeesForPayment() {
-  const employees = await api('/employees');
-  const select = document.getElementById('payEmployee');
-  select.innerHTML = '<option value="">בחר עובד...</option>';
-  employees.forEach(emp => {
-    const opt = document.createElement('option');
-    opt.value = emp.id;
-    opt.textContent = `${emp.first_name} ${emp.last_name}`;
-    select.appendChild(opt);
+    box.addEventListener('click', () => input.click());
+    ['dragenter','dragover'].forEach(e => box.addEventListener(e, ev => { ev.preventDefault(); box.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(e => box.addEventListener(e, ev => { ev.preventDefault(); box.classList.remove('dragover'); }));
+    box.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) processImportFile(ev.dataTransfer.files[0], type); });
+    input.addEventListener('change', ev => { if (ev.target.files.length) processImportFile(ev.target.files[0], type); });
   });
 }
 
-async function loadDutiesForPayment() {
-  const empId = document.getElementById('payEmployee').value;
-  const dutySelect = document.getElementById('payDuty');
-  dutySelect.innerHTML = '<option value="">בחר חודש...</option>';
-
-  if (!empId) return;
-
-  const duties = await api(`/duties?employee_id=${empId}`);
-  duties.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.id;
-    const balance = d.balance;
-    opt.textContent = `${monthLabel(d.year, d.month)} - צפוי: ${formatMoney(d.expected_amount)} | יתרה: ${formatMoney(balance)}`;
-    dutySelect.appendChild(opt);
-  });
-}
-
-async function savePayment() {
-  const empId = parseInt(document.getElementById('payEmployee').value);
-  const dutyId = parseInt(document.getElementById('payDuty').value);
-  const amount = parseFloat(document.getElementById('payAmount').value);
-  const payDate = document.getElementById('payDate').value;
-  const reference = document.getElementById('payRef').value.trim();
-  const notes = document.getElementById('payNotes').value.trim();
-
-  if (!empId || !dutyId || !amount || !payDate) {
-    toast('יש למלא עובד, חודש, סכום ותאריך', 'error');
-    return;
+function parseExcelDate(val) {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    // dd.mm.yyyy or dd/mm/yyyy
+    const m = val.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    // mm/dd/yyyy (try Israeli dd/mm/yyyy)
+    const m2 = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m2) return `${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`;
+    if (/^\d{4}-\d{2}-\d{2}/.test(val)) return val.substring(0,10);
+    return null;
   }
-
-  await api('/payments', {
-    method: 'POST',
-    body: { employee_id: empId, duty_id: dutyId, amount, payment_date: payDate, reference, notes }
-  });
-
-  toast('תשלום נרשם בהצלחה');
-  hideAddPayment();
-  loadPayments();
+  if (typeof val === 'number') {
+    const d = new Date((val - 25569) * 86400 * 1000);
+    return d.toISOString().split('T')[0];
+  }
+  return null;
 }
 
-async function deletePayment(id) {
-  if (!confirm('למחוק תשלום זה?')) return;
-  await api(`/payments/${id}`, { method: 'DELETE' });
-  toast('תשלום נמחק');
-  loadPayments();
+async function processImportFile(file, type) {
+  toast('מעבד קובץ...', 'info');
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(sheet);
+
+    if (!raw.length) { toast('הקובץ ריק', 'error'); return; }
+
+    if (type === 'mecano') {
+      const processed = processMecano(raw);
+      pendingImport = { type: 'mecano', data: processed, raw };
+      showMecanoPreview(processed, raw.length);
+    } else if (type === 'bl') {
+      const processed = processBL(raw);
+      pendingImport = { type: 'bl', data: processed, raw };
+      showBLPreview(processed, raw.length);
+    }
+  } catch (err) {
+    toast('שגיאה: ' + err.message, 'error');
+  }
+}
+
+function processMecano(rows) {
+  return rows.filter(row => {
+    const name = row['שם עובד'] || '';
+    const date = row['תאריך'] || row['date'] || '';
+    const mil = row['מילואים'];
+    if (!name || !date) return false;
+    if (mil !== undefined && mil != 1 && mil !== '1' && mil !== '1.0' && mil !== true) return false;
+    return true;
+  }).map(row => {
+    const date = parseExcelDate(row['תאריך'] || row['date']);
+    return {
+      name: (row['שם עובד'] || '').trim(),
+      date: date,
+      department: (row['מחלקה'] || '').trim(),
+      tz: row['ת.ז'] ? String(row['ת.ז']).trim() : ''
+    };
+  }).filter(r => r.date);
+}
+
+function processBL(rows) {
+  return rows.filter(row => {
+    const tz = row['ת.ז.'] || row['ת.ז'] || '';
+    const total = row['סה"כ לעובד ₪'] || row['סה"כ לעובד'] || 0;
+    return tz && total;
+  }).map(row => ({
+    tz: String(row['ת.ז.'] || row['ת.ז'] || '').trim(),
+    start_date: parseExcelDate(row['תאריך התחלה']) || '',
+    end_date: parseExcelDate(row['תאריך סיום']) || '',
+    payment_type: (row['סוג תשלום'] || 'רגיל').trim(),
+    tagmul: parseFloat(row['תגמול ₪'] || 0),
+    compensation_20: parseFloat(row['פיצוי 20% ₪'] || 0),
+    supplement_40: parseFloat(row['תוספת 40% ₪'] || 0),
+    total_to_employee: parseFloat(row['סה"כ לעובד ₪'] || row['סה"כ לעובד'] || 0),
+    batch_number: String(row['מספר מנה'] || '').trim(),
+    payment_date: parseExcelDate(row['תאריך תשלום']) || '',
+    source_file: (row['קובץ מקור'] || '').trim()
+  }));
+}
+
+function showMecanoPreview(data, rawCount) {
+  document.getElementById('previewTitle').textContent = 'תצוגה מקדימה - מקאנו';
+  const unique = new Set(data.map(d => d.name));
+  document.getElementById('previewStats').innerHTML = `
+    <div class="preview-stat">שורות בקובץ: <strong>${rawCount}</strong></div>
+    <div class="preview-stat">שורות תקינות: <strong>${data.length}</strong></div>
+    <div class="preview-stat">עובדים: <strong>${unique.size}</strong></div>
+  `;
+  document.getElementById('previewHeader').innerHTML = '<th>שם עובד</th><th>תאריך</th><th>מחלקה</th><th>ת.ז.</th>';
+  document.getElementById('previewBody').innerHTML = data.slice(0, 20).map(r =>
+    `<tr><td>${r.name}</td><td>${fmtDate(r.date)}</td><td>${r.department}</td><td>${r.tz || '-'}</td></tr>`
+  ).join('') + (data.length > 20 ? `<tr><td colspan="4" class="empty-text">...ועוד ${data.length - 20} שורות</td></tr>` : '');
+  document.getElementById('importWarnings').innerHTML = '';
+  document.getElementById('importPreview').style.display = 'block';
+}
+
+function showBLPreview(data, rawCount) {
+  document.getElementById('previewTitle').textContent = 'תצוגה מקדימה - תשלומי ב"ל';
+  const total = data.reduce((s, r) => s + r.total_to_employee, 0);
+  document.getElementById('previewStats').innerHTML = `
+    <div class="preview-stat">שורות בקובץ: <strong>${rawCount}</strong></div>
+    <div class="preview-stat">תשלומים תקינים: <strong>${data.length}</strong></div>
+    <div class="preview-stat">סה"כ: <strong>${fmt(total)}</strong></div>
+  `;
+  document.getElementById('previewHeader').innerHTML = '<th>ת.ז.</th><th>תאריכים</th><th>תגמול</th><th>סה"כ לעובד</th><th>מנה</th>';
+  document.getElementById('previewBody').innerHTML = data.slice(0, 20).map(r =>
+    `<tr><td>${r.tz}</td><td>${fmtDate(r.start_date)} - ${fmtDate(r.end_date)}</td><td>${fmt(r.tagmul)}</td><td>${fmt(r.total_to_employee)}</td><td>${r.batch_number}</td></tr>`
+  ).join('') + (data.length > 20 ? `<tr><td colspan="5" class="empty-text">...ועוד ${data.length - 20} שורות</td></tr>` : '');
+  document.getElementById('importWarnings').innerHTML = '';
+  document.getElementById('importPreview').style.display = 'block';
+}
+
+async function confirmImport() {
+  if (!pendingImport) return;
+  try {
+    const endpoint = pendingImport.type === 'mecano' ? '/import/mecano' : '/import/bl';
+    const result = await api(endpoint, { method: 'POST', body: { data: pendingImport.data } });
+
+    if (pendingImport.type === 'mecano') {
+      let msg = `יובאו ${result.dutiesCreated} תקופות (${result.matched} שורות תואמות)`;
+      if (result.unmatched > 0) {
+        msg += ` | ${result.unmatched} שורות לא תואמו`;
+        const warnings = document.getElementById('importWarnings');
+        warnings.innerHTML = `<div class="alert alert-warning">עובדים לא מזוהים: ${result.unmatchedNames.join(', ')}</div>`;
+      }
+      toast(msg, result.unmatched > 0 ? 'info' : 'success');
+    } else {
+      toast(`יובאו ${result.imported} תשלומי ב"ל`, 'success');
+      if (result.errors.length) {
+        document.getElementById('importWarnings').innerHTML = result.errors.map(e =>
+          `<div class="alert alert-warning">${e}</div>`
+        ).join('');
+      }
+    }
+
+    if (!result.errors || !result.errors.length) {
+      cancelImport();
+    }
+    loadYears();
+  } catch (err) {
+    toast('שגיאה: ' + err.message, 'error');
+  }
+}
+
+function cancelImport() {
+  pendingImport = null;
+  document.getElementById('importPreview').style.display = 'none';
+  document.querySelectorAll('.file-input').forEach(i => i.value = '');
 }
 
 // ===== INIT =====
 
 document.addEventListener('DOMContentLoaded', async () => {
-  setupFileUpload();
+  setupImport();
   await loadYears();
   loadDashboard();
 });

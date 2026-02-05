@@ -10,7 +10,6 @@
 </head>
 <body>
 
-    <!-- Header -->
     <header class="header">
         <div class="header-content">
             <h1>ליטאי - מעקב מילואים</h1>
@@ -24,26 +23,24 @@
         </div>
     </header>
 
-    <!-- Navigation -->
     <nav class="nav">
         <button class="nav-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">
             <span class="nav-icon">&#9632;</span> דשבורד
-        </button>
-        <button class="nav-btn" data-tab="import" onclick="switchTab('import')">
-            <span class="nav-icon">&#8681;</span> ייבוא
         </button>
         <button class="nav-btn" data-tab="employees" onclick="switchTab('employees')">
             <span class="nav-icon">&#9679;</span> עובדים
         </button>
         <button class="nav-btn" data-tab="duties" onclick="switchTab('duties')">
-            <span class="nav-icon">&#9776;</span> ימי שירות
+            <span class="nav-icon">&#9776;</span> תקופות שירות
         </button>
-        <button class="nav-btn" data-tab="payments" onclick="switchTab('payments')">
-            <span class="nav-icon">&#8362;</span> תשלומים
+        <button class="nav-btn" data-tab="bl-payments" onclick="switchTab('bl-payments')">
+            <span class="nav-icon">&#8362;</span> תשלומי ב"ל
+        </button>
+        <button class="nav-btn" data-tab="import" onclick="switchTab('import')">
+            <span class="nav-icon">&#8681;</span> ייבוא
         </button>
     </nav>
 
-    <!-- Main Content -->
     <main class="main">
 
         <!-- ===== DASHBOARD ===== -->
@@ -58,70 +55,38 @@
                     <div class="stat-value" id="statDays">0</div>
                 </div>
                 <div class="stat-card accent">
-                    <div class="stat-label">צפוי לקבל</div>
-                    <div class="stat-value" id="statExpected">0</div>
+                    <div class="stat-label">תשלום מעסיק</div>
+                    <div class="stat-value" id="statEmployerPay">0</div>
+                </div>
+                <div class="stat-card accent">
+                    <div class="stat-label">צפוי מב"ל</div>
+                    <div class="stat-value" id="statExpectedBL">0</div>
                 </div>
                 <div class="stat-card success">
-                    <div class="stat-label">שולם</div>
-                    <div class="stat-value" id="statPaid">0</div>
+                    <div class="stat-label">התקבל מב"ל</div>
+                    <div class="stat-value" id="statBLPaid">0</div>
                 </div>
                 <div class="stat-card" id="balanceCard">
-                    <div class="stat-label">יתרה לגבייה</div>
-                    <div class="stat-value" id="statBalance">0</div>
+                    <div class="stat-label">יתרה לגבייה מב"ל</div>
+                    <div class="stat-value" id="statBLBalance">0</div>
                 </div>
                 <div class="stat-card warning">
-                    <div class="stat-label">ממתינים</div>
+                    <div class="stat-label">תקופות ממתינות</div>
                     <div class="stat-value" id="statPending">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">הפרשים לעובדים</div>
+                    <div class="stat-value" id="statDifference">0</div>
                 </div>
             </div>
 
-            <!-- Alerts -->
             <div id="dashboardAlerts" class="alerts-container"></div>
 
-            <!-- Recent duties summary -->
             <div class="panel">
                 <h3 class="panel-title">סיכום לפי חודש</h3>
                 <div id="monthlySummary" class="monthly-summary">
-                    <p class="empty-text">יש לייבא נתונים כדי לראות סיכום</p>
+                    <p class="empty-text">טוען נתונים...</p>
                 </div>
-            </div>
-        </section>
-
-        <!-- ===== IMPORT ===== -->
-        <section id="tab-import" class="tab-panel">
-            <h2 class="section-title">ייבוא קובץ מקאנו</h2>
-
-            <div class="upload-box" id="uploadBox">
-                <div class="upload-icon">&#128196;</div>
-                <p class="upload-text">גרור קובץ Excel לכאן או לחץ לבחירה</p>
-                <small>.xlsx, .xls</small>
-                <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
-            </div>
-
-            <!-- Preview area -->
-            <div id="importPreview" class="panel" style="display: none;">
-                <h3 class="panel-title">תצוגה מקדימה</h3>
-                <div id="previewStats" class="preview-stats"></div>
-                <div class="table-wrap">
-                    <table id="previewTable">
-                        <thead><tr id="previewHeader"></tr></thead>
-                        <tbody id="previewBody"></tbody>
-                    </table>
-                </div>
-                <div class="action-bar">
-                    <button class="btn btn-primary" onclick="confirmImport()">אשר ייבוא</button>
-                    <button class="btn btn-ghost" onclick="cancelImport()">בטל</button>
-                </div>
-            </div>
-
-            <div class="info-box">
-                <h4>מה המערכת מצפה לראות בקובץ:</h4>
-                <ul>
-                    <li>עמודות: שם עובד, ת.ז., תאריך, מחלקה</li>
-                    <li>תאריכים בפורמט: dd.mm.yyyy או yyyy-mm-dd</li>
-                    <li>שורה אחת = יום שירות אחד</li>
-                    <li>המערכת מקבצת אוטומטית לפי עובד וחודש</li>
-                </ul>
             </div>
         </section>
 
@@ -132,30 +97,14 @@
                 <button class="btn btn-primary" onclick="showAddEmployee()">+ הוסף עובד</button>
             </div>
 
-            <!-- Add employee form (hidden by default) -->
             <div id="addEmployeeForm" class="panel form-panel" style="display: none;">
                 <h3 class="panel-title">הוספת עובד חדש</h3>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>ת.ז.</label>
-                        <input type="text" id="empTz" placeholder="מספר ת.ז.">
-                    </div>
-                    <div class="form-group">
-                        <label>שם פרטי</label>
-                        <input type="text" id="empFirstName" placeholder="שם פרטי">
-                    </div>
-                    <div class="form-group">
-                        <label>שם משפחה</label>
-                        <input type="text" id="empLastName" placeholder="שם משפחה">
-                    </div>
-                    <div class="form-group">
-                        <label>מחלקה</label>
-                        <input type="text" id="empDept" placeholder="מחלקה">
-                    </div>
-                    <div class="form-group">
-                        <label>תעריף יומי</label>
-                        <input type="number" id="empRate" placeholder="500" value="500">
-                    </div>
+                    <div class="form-group"><label>ת.ז.</label><input type="text" id="empTz"></div>
+                    <div class="form-group"><label>שם פרטי</label><input type="text" id="empFirstName"></div>
+                    <div class="form-group"><label>שם משפחה</label><input type="text" id="empLastName"></div>
+                    <div class="form-group"><label>מחלקה</label><input type="text" id="empDept"></div>
+                    <div class="form-group"><label>תעריף יומי</label><input type="number" id="empRate" value="500"></div>
                 </div>
                 <div class="action-bar">
                     <button class="btn btn-primary" onclick="saveEmployee()">שמור</button>
@@ -170,15 +119,17 @@
                             <th>שם</th>
                             <th>ת.ז.</th>
                             <th>מחלקה</th>
+                            <th>תעריף יומי</th>
                             <th>ימי שירות</th>
-                            <th>צפוי</th>
-                            <th>שולם</th>
-                            <th>יתרה</th>
-                            <th>פעולות</th>
+                            <th>צפוי מב"ל</th>
+                            <th>התקבל מב"ל</th>
+                            <th>יתרה מב"ל</th>
+                            <th>הפרשים</th>
+                            <th>סטטוס</th>
                         </tr>
                     </thead>
                     <tbody id="employeesBody">
-                        <tr><td colspan="8" class="empty-text">טוען...</td></tr>
+                        <tr><td colspan="10" class="empty-text">טוען...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -187,7 +138,7 @@
         <!-- ===== DUTIES ===== -->
         <section id="tab-duties" class="tab-panel">
             <div class="section-header">
-                <h2 class="section-title">ימי שירות מילואים</h2>
+                <h2 class="section-title">תקופות שירות מילואים</h2>
                 <div class="filters">
                     <select id="dutyMonthFilter" onchange="loadDuties()">
                         <option value="">כל החודשים</option>
@@ -203,67 +154,35 @@
                     <thead>
                         <tr>
                             <th>עובד</th>
-                            <th>חודש</th>
+                            <th>תאריכים</th>
                             <th>ימים</th>
-                            <th>סכום צפוי</th>
-                            <th>שולם</th>
-                            <th>יתרה</th>
+                            <th>א-ה</th>
+                            <th>ו'</th>
+                            <th>ש'</th>
+                            <th>תעריף</th>
+                            <th>מעסיק</th>
+                            <th>צפוי ב"ל</th>
+                            <th>התקבל</th>
+                            <th>הפרשים</th>
                             <th>סטטוס</th>
-                            <th>פעולות</th>
+                            <th>הערות</th>
                         </tr>
                     </thead>
                     <tbody id="dutiesBody">
-                        <tr><td colspan="8" class="empty-text">טוען...</td></tr>
+                        <tr><td colspan="13" class="empty-text">טוען...</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
 
-        <!-- ===== PAYMENTS ===== -->
-        <section id="tab-payments" class="tab-panel">
+        <!-- ===== BL PAYMENTS ===== -->
+        <section id="tab-bl-payments" class="tab-panel">
             <div class="section-header">
-                <h2 class="section-title">תשלומים</h2>
-                <button class="btn btn-primary" onclick="showAddPayment()">+ רשום תשלום</button>
-            </div>
-
-            <!-- Add payment form -->
-            <div id="addPaymentForm" class="panel form-panel" style="display: none;">
-                <h3 class="panel-title">רישום תשלום חדש</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>עובד</label>
-                        <select id="payEmployee" onchange="loadDutiesForPayment()">
-                            <option value="">בחר עובד...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>חודש שירות</label>
-                        <select id="payDuty">
-                            <option value="">בחר חודש...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>סכום</label>
-                        <input type="number" id="payAmount" placeholder="0">
-                    </div>
-                    <div class="form-group">
-                        <label>תאריך תשלום</label>
-                        <input type="date" id="payDate">
-                    </div>
-                    <div class="form-group">
-                        <label>אסמכתא</label>
-                        <input type="text" id="payRef" placeholder="מס' אסמכתא">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group full">
-                        <label>הערות</label>
-                        <input type="text" id="payNotes" placeholder="הערות (אופציונלי)">
-                    </div>
-                </div>
-                <div class="action-bar">
-                    <button class="btn btn-primary" onclick="savePayment()">שמור תשלום</button>
-                    <button class="btn btn-ghost" onclick="hideAddPayment()">בטל</button>
+                <h2 class="section-title">תשלומי ביטוח לאומי</h2>
+                <div class="filters">
+                    <select id="blEmployeeFilter" onchange="loadBLPayments()">
+                        <option value="">כל העובדים</option>
+                    </select>
                 </div>
             </div>
 
@@ -272,24 +191,70 @@
                     <thead>
                         <tr>
                             <th>עובד</th>
-                            <th>חודש שירות</th>
-                            <th>סכום</th>
+                            <th>תאריכי שירות</th>
+                            <th>תגמול</th>
+                            <th>פיצוי 20%</th>
+                            <th>תוספת 40%</th>
+                            <th>סה"כ לעובד</th>
+                            <th>מנה</th>
                             <th>תאריך תשלום</th>
-                            <th>אסמכתא</th>
-                            <th>הערות</th>
-                            <th>פעולות</th>
+                            <th>מקור</th>
                         </tr>
                     </thead>
-                    <tbody id="paymentsBody">
-                        <tr><td colspan="7" class="empty-text">טוען...</td></tr>
+                    <tbody id="blPaymentsBody">
+                        <tr><td colspan="9" class="empty-text">טוען...</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
 
+        <!-- ===== IMPORT ===== -->
+        <section id="tab-import" class="tab-panel">
+            <h2 class="section-title">ייבוא נתונים</h2>
+
+            <div class="import-types">
+                <div class="panel import-option">
+                    <h3 class="panel-title">ייבוא מקאנו (דוח נוכחות)</h3>
+                    <p>קובץ נוכחות מילואים מהמערכת - שם עובד + תאריך + מחלקה</p>
+                    <p class="info-note">* התאמה לפי שם (לא נדרש ת.ז.)</p>
+                    <div class="upload-box" id="mecanoUpload">
+                        <div class="upload-icon">&#128196;</div>
+                        <p class="upload-text">גרור קובץ מקאנו לכאן</p>
+                        <input type="file" class="file-input" accept=".xlsx,.xls" data-type="mecano" hidden>
+                    </div>
+                </div>
+
+                <div class="panel import-option">
+                    <h3 class="panel-title">ייבוא תשלומי ביטוח לאומי</h3>
+                    <p>קובץ תשלומים מב"ל - ת.ז. + תאריכים + סכומים</p>
+                    <p class="info-note">* נתמך XLS/XLSX (מומר מ-PDF)</p>
+                    <div class="upload-box" id="blUpload">
+                        <div class="upload-icon">&#128176;</div>
+                        <p class="upload-text">גרור קובץ ב"ל לכאן</p>
+                        <input type="file" class="file-input" accept=".xlsx,.xls" data-type="bl" hidden>
+                    </div>
+                </div>
+            </div>
+
+            <div id="importPreview" class="panel" style="display: none;">
+                <h3 class="panel-title" id="previewTitle">תצוגה מקדימה</h3>
+                <div id="previewStats" class="preview-stats"></div>
+                <div class="table-wrap">
+                    <table id="previewTable">
+                        <thead><tr id="previewHeader"></tr></thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+                <div id="importWarnings" class="alerts-container"></div>
+                <div class="action-bar">
+                    <button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImport()">אשר ייבוא</button>
+                    <button class="btn btn-ghost" onclick="cancelImport()">בטל</button>
+                </div>
+            </div>
+        </section>
+
     </main>
 
-    <!-- Toast notifications -->
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="js/app.js"></script>

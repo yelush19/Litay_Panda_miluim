@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
+const seed = require('./seed');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,6 +10,16 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
+
+// ===== AUTO-SEED on first run =====
+if (db.isEmpty()) {
+  console.log('Database is empty - running seed from 2025 data...');
+  const data = seed.run();
+  if (data) {
+    db.bulkLoad(data);
+    console.log('Seed complete!');
+  }
+}
 
 // ===== STATS =====
 
@@ -31,8 +42,7 @@ app.get('/api/years', (req, res) => {
 
 app.get('/api/months/:year', (req, res) => {
   try {
-    const year = parseInt(req.params.year);
-    res.json(db.getAvailableMonths(year));
+    res.json(db.getAvailableMonths(parseInt(req.params.year)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -43,8 +53,7 @@ app.get('/api/months/:year', (req, res) => {
 app.get('/api/employees', (req, res) => {
   try {
     const year = req.query.year ? parseInt(req.query.year) : null;
-    const employees = year ? db.getEmployeesByYear(year) : db.getEmployees();
-    res.json(employees);
+    res.json(year ? db.getEmployeesByYear(year) : db.getEmployees());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -52,8 +61,7 @@ app.get('/api/employees', (req, res) => {
 
 app.post('/api/employees', (req, res) => {
   try {
-    const emp = db.addEmployee(req.body);
-    res.json(emp);
+    res.json(db.addEmployee(req.body));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -61,9 +69,8 @@ app.post('/api/employees', (req, res) => {
 
 app.put('/api/employees/:id', (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    const updated = db.updateEmployee(id, req.body);
-    if (!updated) return res.status(404).json({ error: 'Employee not found' });
+    const updated = db.updateEmployee(parseInt(req.params.id), req.body);
+    if (!updated) return res.status(404).json({ error: 'Not found' });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -72,9 +79,26 @@ app.put('/api/employees/:id', (req, res) => {
 
 app.delete('/api/employees/:id', (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    db.deleteEmployee(id);
+    db.deleteEmployee(parseInt(req.params.id));
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== SALARY HISTORY =====
+
+app.get('/api/salary-history/:employeeId', (req, res) => {
+  try {
+    res.json(db.getSalaryHistory(parseInt(req.params.employeeId)));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salary-history', (req, res) => {
+  try {
+    res.json(db.addSalaryRecord(req.body));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -96,8 +120,7 @@ app.get('/api/duties', (req, res) => {
 
 app.post('/api/duties', (req, res) => {
   try {
-    const duty = db.addDuty(req.body);
-    res.json(duty);
+    res.json(db.addDuty(req.body));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -105,9 +128,8 @@ app.post('/api/duties', (req, res) => {
 
 app.put('/api/duties/:id', (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    const updated = db.updateDuty(id, req.body);
-    if (!updated) return res.status(404).json({ error: 'Duty not found' });
+    const updated = db.updateDuty(parseInt(req.params.id), req.body);
+    if (!updated) return res.status(404).json({ error: 'Not found' });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -116,40 +138,37 @@ app.put('/api/duties/:id', (req, res) => {
 
 app.delete('/api/duties/:id', (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    db.deleteDuty(id);
+    db.deleteDuty(parseInt(req.params.id));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ===== PAYMENTS =====
+// ===== BL PAYMENTS =====
 
-app.get('/api/payments', (req, res) => {
+app.get('/api/bl-payments', (req, res) => {
   try {
     const filters = {};
     if (req.query.employee_id) filters.employee_id = parseInt(req.query.employee_id);
-    if (req.query.duty_id) filters.duty_id = parseInt(req.query.duty_id);
-    res.json(db.getPayments(filters));
+    if (req.query.batch_number) filters.batch_number = req.query.batch_number;
+    res.json(db.getBLPayments(filters));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/payments', (req, res) => {
+app.post('/api/bl-payments', (req, res) => {
   try {
-    const payment = db.addPayment(req.body);
-    res.json(payment);
+    res.json(db.addBLPayment(req.body));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.delete('/api/payments/:id', (req, res) => {
+app.delete('/api/bl-payments/:id', (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    db.deletePayment(id);
+    db.deleteBLPayment(parseInt(req.params.id));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -158,17 +177,27 @@ app.delete('/api/payments/:id', (req, res) => {
 
 // ===== IMPORT =====
 
-app.post('/api/import', (req, res) => {
+// Import Mecano attendance file
+app.post('/api/import/mecano', (req, res) => {
   try {
     const { data } = req.body;
     if (!data || !Array.isArray(data)) {
       return res.status(400).json({ error: 'Invalid data' });
     }
-    const result = db.importKanoData(data);
-    res.json({
-      success: true,
-      ...result
-    });
+    res.json(db.importMecano(data));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import BL payments file
+app.post('/api/import/bl', (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({ error: 'Invalid data' });
+    }
+    res.json(db.importBLPayments(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -180,6 +209,22 @@ app.post('/api/reset', (req, res) => {
   try {
     db.reset();
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Re-seed
+app.post('/api/reseed', (req, res) => {
+  try {
+    db.reset();
+    const data = seed.run();
+    if (data) {
+      db.bulkLoad(data);
+      res.json({ success: true, message: 'Re-seeded from 2025 data' });
+    } else {
+      res.json({ success: false, message: '2025 file not found' });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

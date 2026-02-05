@@ -5,10 +5,12 @@ const DATA_FILE = path.join(__dirname, 'data', 'miluim.json');
 
 const DEFAULT_DATA = {
   employees: [],
+  salary_history: [],
   duties: [],
-  payments: [],
+  bl_payments: [],
+  payment_batches: [],
   _meta: {
-    version: 2,
+    version: 3,
     created: new Date().toISOString(),
     lastModified: new Date().toISOString()
   }
@@ -24,11 +26,12 @@ class Database {
       if (fs.existsSync(DATA_FILE)) {
         const raw = fs.readFileSync(DATA_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        // Ensure all tables exist
         return {
           employees: parsed.employees || [],
+          salary_history: parsed.salary_history || [],
           duties: parsed.duties || [],
-          payments: parsed.payments || [],
+          bl_payments: parsed.bl_payments || [],
+          payment_batches: parsed.payment_batches || [],
           _meta: parsed._meta || DEFAULT_DATA._meta
         };
       }
@@ -61,61 +64,81 @@ class Database {
   // ===== EMPLOYEES =====
 
   getEmployees() {
-    return this.data.employees.map(emp => {
-      const empDuties = this.data.duties.filter(d => d.employee_id === emp.id);
-      const empPayments = this.data.payments.filter(p => p.employee_id === emp.id);
-      const totalDays = empDuties.reduce((sum, d) => sum + (d.total_days || 0), 0);
-      const totalExpected = empDuties.reduce((sum, d) => sum + (d.expected_amount || 0), 0);
-      const totalPaid = empPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      return {
-        ...emp,
-        total_days: totalDays,
-        total_expected: totalExpected,
-        total_paid: totalPaid,
-        balance: totalExpected - totalPaid
-      };
-    });
+    return this.data.employees.map(emp => this._enrichEmployee(emp));
   }
 
   getEmployeesByYear(year) {
     return this.data.employees.map(emp => {
-      const empDuties = this.data.duties.filter(d => d.employee_id === emp.id && d.year === year);
-      const empPayments = this.data.payments.filter(p => {
-        const duty = this.data.duties.find(d => d.id === p.duty_id);
-        return p.employee_id === emp.id && duty && duty.year === year;
-      });
-      const totalDays = empDuties.reduce((sum, d) => sum + (d.total_days || 0), 0);
-      const totalExpected = empDuties.reduce((sum, d) => sum + (d.expected_amount || 0), 0);
-      const totalPaid = empPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-      if (totalDays === 0 && totalExpected === 0) return null;
-
-      return {
-        ...emp,
-        total_days: totalDays,
-        total_expected: totalExpected,
-        total_paid: totalPaid,
-        balance: totalExpected - totalPaid
-      };
+      const enriched = this._enrichEmployee(emp, year);
+      if (enriched.total_days === 0 && enriched.total_bl === 0) return null;
+      return enriched;
     }).filter(Boolean);
   }
 
+  _enrichEmployee(emp, year) {
+    const duties = year
+      ? this.data.duties.filter(d => d.employee_id === emp.id && d.year === year)
+      : this.data.duties.filter(d => d.employee_id === emp.id);
+    const blPayments = year
+      ? this.data.bl_payments.filter(p => p.employee_id === emp.id && duties.some(d => d.id === p.duty_id))
+      : this.data.bl_payments.filter(p => p.employee_id === emp.id);
+
+    const totalDays = duties.reduce((s, d) => s + (d.total_days || 0), 0);
+    const totalExpectedBL = duties.reduce((s, d) => s + (d.expected_bl || 0), 0);
+    const totalBLPaid = blPayments.reduce((s, p) => s + (p.total_to_employee || 0), 0);
+    const totalDifference = duties.reduce((s, d) => s + (d.difference_amount || 0), 0);
+
+    // Current salary
+    const salaryRecords = this.data.salary_history
+      .filter(s => s.employee_id === emp.id)
+      .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+    const currentRate = salaryRecords.length > 0 ? salaryRecords[0].daily_rate : emp.daily_rate;
+
+    return {
+      ...emp,
+      current_daily_rate: currentRate,
+      total_days: totalDays,
+      total_expected_bl: totalExpectedBL,
+      total_bl_paid: totalBLPaid,
+      bl_balance: totalExpectedBL - totalBLPaid,
+      total_difference: totalDifference,
+      duty_count: duties.length
+    };
+  }
+
   findEmployeeByTz(tz) {
-    return this.data.employees.find(e => e.tz === tz) || null;
+    if (!tz) return null;
+    const clean = String(tz).trim();
+    return this.data.employees.find(e => String(e.tz).trim() === clean) || null;
+  }
+
+  findEmployeeByName(fullName) {
+    if (!fullName) return null;
+    const clean = fullName.trim();
+    return this.data.employees.find(e => {
+      const empFull = `${e.first_name} ${e.last_name}`.trim();
+      return empFull === clean || `${e.last_name} ${e.first_name}`.trim() === clean;
+    }) || null;
   }
 
   addEmployee(employee) {
-    const existing = this.findEmployeeByTz(employee.tz);
-    if (existing) return existing;
+    if (employee.tz) {
+      const existing = this.findEmployeeByTz(employee.tz);
+      if (existing) return existing;
+    }
 
     const newEmp = {
       id: this._nextId('employees'),
-      tz: employee.tz,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
+      tz: employee.tz || '',
+      first_name: employee.first_name || '',
+      last_name: employee.last_name || '',
+      full_name: employee.full_name || `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
       department: employee.department || '',
       daily_rate: employee.daily_rate || 0,
-      status: 'active',
+      monthly_salary: employee.monthly_salary || 0,
+      bank: employee.bank || '',
+      account_number: employee.account_number || '',
+      status: employee.status || 'active',
       created: new Date().toISOString()
     };
     this.data.employees.push(newEmp);
@@ -134,11 +157,44 @@ class Database {
   deleteEmployee(id) {
     this.data.employees = this.data.employees.filter(e => e.id !== id);
     this.data.duties = this.data.duties.filter(d => d.employee_id !== id);
-    this.data.payments = this.data.payments.filter(p => p.employee_id !== id);
+    this.data.bl_payments = this.data.bl_payments.filter(p => p.employee_id !== id);
+    this.data.salary_history = this.data.salary_history.filter(s => s.employee_id !== id);
     this._save();
   }
 
-  // ===== DUTIES =====
+  // ===== SALARY HISTORY =====
+
+  getSalaryHistory(employeeId) {
+    return this.data.salary_history
+      .filter(s => s.employee_id === employeeId)
+      .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+  }
+
+  addSalaryRecord(record) {
+    const newRecord = {
+      id: this._nextId('salary_history'),
+      employee_id: record.employee_id,
+      daily_rate: record.daily_rate,
+      monthly_salary: record.monthly_salary || 0,
+      effective_date: record.effective_date,
+      notes: record.notes || '',
+      created: new Date().toISOString()
+    };
+    this.data.salary_history.push(newRecord);
+    this._save();
+    return newRecord;
+  }
+
+  getDailyRateForDate(employeeId, date) {
+    const records = this.data.salary_history
+      .filter(s => s.employee_id === employeeId && s.effective_date <= date)
+      .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+    if (records.length > 0) return records[0].daily_rate;
+    const emp = this.data.employees.find(e => e.id === employeeId);
+    return emp ? emp.daily_rate : 0;
+  }
+
+  // ===== DUTIES (reserve duty periods) =====
 
   getDuties(filters = {}) {
     let duties = this.data.duties;
@@ -148,36 +204,33 @@ class Database {
 
     return duties.map(duty => {
       const emp = this.data.employees.find(e => e.id === duty.employee_id);
-      const payments = this.data.payments.filter(p => p.duty_id === duty.id);
-      const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const blPayments = this.data.bl_payments.filter(p => p.duty_id === duty.id);
+      const totalBLPaid = blPayments.reduce((s, p) => s + (p.total_to_employee || 0), 0);
       return {
         ...duty,
-        employee_name: emp ? `${emp.first_name} ${emp.last_name}` : '',
+        employee_name: emp ? emp.full_name || `${emp.first_name} ${emp.last_name}` : '',
         employee_tz: emp ? emp.tz : '',
         department: emp ? emp.department : '',
-        total_paid: totalPaid,
-        balance: (duty.expected_amount || 0) - totalPaid,
-        payment_status: totalPaid === 0 ? 'pending'
-          : totalPaid >= (duty.expected_amount || 0) ? 'paid'
+        total_bl_paid: totalBLPaid,
+        bl_balance: (duty.expected_bl || 0) - totalBLPaid,
+        payment_status: totalBLPaid === 0 ? 'pending'
+          : totalBLPaid >= (duty.expected_bl || 0) ? 'paid'
           : 'partial'
       };
     });
   }
 
   addDuty(duty) {
-    // Check for existing duty for same employee/year/month
+    // Check for existing: same employee + same start_date
     const existing = this.data.duties.find(d =>
       d.employee_id === duty.employee_id &&
-      d.year === duty.year &&
-      d.month === duty.month
+      d.start_date === duty.start_date &&
+      d.end_date === duty.end_date
     );
 
     if (existing) {
-      // Merge: add days, update amount
-      const newDates = [...new Set([...(existing.dates || []), ...(duty.dates || [])])].sort();
-      existing.dates = newDates;
-      existing.total_days = newDates.length;
-      existing.expected_amount = newDates.length * (duty.daily_rate || existing.expected_amount / existing.total_days || 0);
+      // Update existing
+      Object.assign(existing, duty, { id: existing.id });
       this._save();
       return existing;
     }
@@ -187,11 +240,24 @@ class Database {
       employee_id: duty.employee_id,
       year: duty.year,
       month: duty.month,
-      dates: duty.dates || [],
-      total_days: duty.total_days || (duty.dates || []).length,
-      expected_amount: duty.expected_amount || 0,
-      status: duty.status || 'submitted',
+      start_date: duty.start_date || '',
+      end_date: duty.end_date || '',
+      total_days: duty.total_days || 0,
+      weekdays: duty.weekdays || 0,        // ימי א-ה
+      fridays: duty.fridays || 0,          // ימי שישי
+      saturdays: duty.saturdays || 0,      // ימי שבת
+      holidays: duty.holidays || 0,        // ימי חג
+      daily_rate: duty.daily_rate || 0,
+      employer_payment: duty.employer_payment || 0,   // תשלום מעסיק (א-ה)
+      compensation_20: duty.compensation_20 || 0,     // פיצוי 20%
+      supplement_40: duty.supplement_40 || 0,          // תוספת 40%
+      expected_bl: duty.expected_bl || 0,              // סה"כ צפוי מביטוח לאומי
+      bl_payment_date: duty.bl_payment_date || '',     // מועד תשלום ב"ל
+      difference_amount: duty.difference_amount || 0,  // הפרשים לעובד
+      paid_in_previous: duty.paid_in_previous || '',   // שולם בשכר קודם
+      payment_month: duty.payment_month || '',         // חודש ביצוע תשלום
       notes: duty.notes || '',
+      status: duty.status || 'submitted',
       created: new Date().toISOString()
     };
     this.data.duties.push(newDuty);
@@ -209,47 +275,53 @@ class Database {
 
   deleteDuty(id) {
     this.data.duties = this.data.duties.filter(d => d.id !== id);
-    this.data.payments = this.data.payments.filter(p => p.duty_id !== id);
+    this.data.bl_payments = this.data.bl_payments.filter(p => p.duty_id !== id);
     this._save();
   }
 
-  // ===== PAYMENTS =====
+  // ===== BL PAYMENTS (Bituach Leumi) =====
 
-  getPayments(filters = {}) {
-    let payments = this.data.payments;
+  getBLPayments(filters = {}) {
+    let payments = this.data.bl_payments;
     if (filters.employee_id) payments = payments.filter(p => p.employee_id === filters.employee_id);
-    if (filters.duty_id) payments = payments.filter(p => p.duty_id === filters.duty_id);
+    if (filters.batch_number) payments = payments.filter(p => p.batch_number === filters.batch_number);
 
-    return payments.map(payment => {
-      const emp = this.data.employees.find(e => e.id === payment.employee_id);
-      const duty = this.data.duties.find(d => d.id === payment.duty_id);
+    return payments.map(p => {
+      const emp = this.data.employees.find(e => e.id === p.employee_id);
+      const duty = this.data.duties.find(d => d.id === p.duty_id);
       return {
-        ...payment,
-        employee_name: emp ? `${emp.first_name} ${emp.last_name}` : '',
-        duty_month: duty ? `${duty.year}-${String(duty.month).padStart(2, '0')}` : '',
-        duty_expected: duty ? duty.expected_amount : 0
+        ...p,
+        employee_name: emp ? emp.full_name || `${emp.first_name} ${emp.last_name}` : '',
+        duty_period: duty ? `${duty.start_date} - ${duty.end_date}` : '',
+        duty_month: duty ? `${duty.year}-${String(duty.month).padStart(2, '0')}` : ''
       };
     });
   }
 
-  addPayment(payment) {
+  addBLPayment(payment) {
     const newPayment = {
-      id: this._nextId('payments'),
+      id: this._nextId('bl_payments'),
       employee_id: payment.employee_id,
-      duty_id: payment.duty_id,
-      amount: payment.amount,
-      payment_date: payment.payment_date,
-      reference: payment.reference || '',
-      notes: payment.notes || '',
+      duty_id: payment.duty_id || null,
+      start_date: payment.start_date || '',
+      end_date: payment.end_date || '',
+      payment_type: payment.payment_type || 'regular',
+      tagmul: payment.tagmul || 0,              // תגמול
+      compensation_20: payment.compensation_20 || 0, // פיצוי 20%
+      supplement_40: payment.supplement_40 || 0,     // תוספת 40%
+      total_to_employee: payment.total_to_employee || 0, // סה"כ לעובד
+      batch_number: payment.batch_number || '',  // מספר מנה
+      payment_date: payment.payment_date || '',
+      source_file: payment.source_file || '',
       created: new Date().toISOString()
     };
-    this.data.payments.push(newPayment);
+    this.data.bl_payments.push(newPayment);
     this._save();
     return newPayment;
   }
 
-  deletePayment(id) {
-    this.data.payments = this.data.payments.filter(p => p.id !== id);
+  deleteBLPayment(id) {
+    this.data.bl_payments = this.data.bl_payments.filter(p => p.id !== id);
     this._save();
   }
 
@@ -259,95 +331,178 @@ class Database {
     const employees = year ? this.getEmployeesByYear(year) : this.getEmployees();
     const duties = year ? this.data.duties.filter(d => d.year === year) : this.data.duties;
     const dutyIds = new Set(duties.map(d => d.id));
-    const payments = this.data.payments.filter(p => !year || dutyIds.has(p.duty_id));
+    const blPayments = this.data.bl_payments.filter(p => !year || dutyIds.has(p.duty_id));
 
-    const totalDays = duties.reduce((sum, d) => sum + (d.total_days || 0), 0);
-    const totalExpected = duties.reduce((sum, d) => sum + (d.expected_amount || 0), 0);
-    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalDays = duties.reduce((s, d) => s + (d.total_days || 0), 0);
+    const totalExpectedBL = duties.reduce((s, d) => s + (d.expected_bl || 0), 0);
+    const totalEmployerPay = duties.reduce((s, d) => s + (d.employer_payment || 0), 0);
+    const totalBLPaid = blPayments.reduce((s, p) => s + (p.total_to_employee || 0), 0);
+    const totalDifference = duties.reduce((s, d) => s + (d.difference_amount || 0), 0);
 
     const pendingDuties = duties.filter(d => {
-      const dutyPayments = payments.filter(p => p.duty_id === d.id);
-      const paid = dutyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      return paid < (d.expected_amount || 0);
+      const paid = blPayments.filter(p => p.duty_id === d.id).reduce((s, p) => s + (p.total_to_employee || 0), 0);
+      return paid < (d.expected_bl || 0) && (d.expected_bl || 0) > 0;
     });
 
     return {
       totalEmployees: employees.length,
       totalDays,
-      totalExpected,
-      totalPaid,
-      balance: totalExpected - totalPaid,
-      pendingCount: pendingDuties.length,
-      avgDaysPerEmployee: employees.length > 0 ? Math.round(totalDays / employees.length) : 0
+      totalExpectedBL,
+      totalEmployerPay,
+      totalBLPaid,
+      blBalance: totalExpectedBL - totalBLPaid,
+      totalDifference,
+      pendingCount: pendingDuties.length
     };
   }
 
   getAvailableYears() {
     const years = [...new Set(this.data.duties.map(d => d.year))].sort((a, b) => b - a);
-    if (years.length === 0) {
-      return [new Date().getFullYear()];
-    }
+    if (years.length === 0) return [new Date().getFullYear()];
     return years;
   }
 
   getAvailableMonths(year) {
-    const months = [...new Set(
-      this.data.duties
-        .filter(d => d.year === year)
-        .map(d => d.month)
+    return [...new Set(
+      this.data.duties.filter(d => d.year === year).map(d => d.month)
     )].sort((a, b) => a - b);
-    return months;
   }
 
-  // ===== IMPORT =====
+  // ===== IMPORT: MECANO (attendance file, no TZ) =====
 
-  importKanoData(rows) {
-    let importedEmployees = 0;
-    let importedDuties = 0;
-    let errors = [];
+  importMecano(rows) {
+    let matched = 0, unmatched = 0, errors = [];
+    const unmatchedNames = new Set();
 
-    rows.forEach((row, index) => {
+    // Group by employee+month
+    const grouped = {};
+    rows.forEach((row, i) => {
       try {
-        const { tz, first_name, last_name, department, daily_rate, duty_date, days, year, month, dates } = row;
+        const name = row.name;
+        const date = row.date;
+        const dept = row.department || '';
 
-        if (!tz || !first_name) {
-          errors.push(`Row ${index + 1}: missing basic data`);
+        if (!name || !date) return;
+
+        // Try to match employee by name
+        let emp = this.findEmployeeByName(name);
+        // Also try by TZ if provided (2026 format)
+        if (!emp && row.tz) emp = this.findEmployeeByTz(row.tz);
+
+        if (!emp) {
+          unmatchedNames.add(name);
+          unmatched++;
           return;
         }
 
-        // Add or find employee
-        let emp = this.findEmployeeByTz(tz);
-        if (!emp) {
-          emp = this.addEmployee({ tz, first_name, last_name, department, daily_rate: daily_rate || 500 });
-          importedEmployees++;
-        }
+        const year = parseInt(date.substring(0, 4));
+        const month = parseInt(date.substring(5, 7));
+        const key = `${emp.id}_${year}_${month}`;
 
-        // Add duty record
-        if (dates && dates.length > 0) {
-          this.addDuty({
+        if (!grouped[key]) {
+          grouped[key] = {
             employee_id: emp.id,
-            year: year || new Date().getFullYear(),
-            month: month || new Date().getMonth() + 1,
-            dates: dates,
-            total_days: dates.length,
-            expected_amount: dates.length * (daily_rate || emp.daily_rate || 500),
-            daily_rate: daily_rate || emp.daily_rate || 500,
-            status: 'submitted'
-          });
-          importedDuties++;
+            year, month,
+            dates: [],
+            department: dept
+          };
         }
+        if (!grouped[key].dates.includes(date)) {
+          grouped[key].dates.push(date);
+        }
+        matched++;
       } catch (err) {
-        errors.push(`Row ${index + 1}: ${err.message}`);
+        errors.push(`Row ${i + 1}: ${err.message}`);
       }
     });
 
-    return { importedEmployees, importedDuties, errors };
+    // Create duty records from grouped data
+    let dutiesCreated = 0;
+    Object.values(grouped).forEach(g => {
+      const rate = this.getDailyRateForDate(g.employee_id, g.dates[0]);
+      this.addDuty({
+        employee_id: g.employee_id,
+        year: g.year,
+        month: g.month,
+        start_date: g.dates[0],
+        end_date: g.dates[g.dates.length - 1],
+        total_days: g.dates.length,
+        daily_rate: rate,
+        employer_payment: g.dates.length * rate,
+        status: 'from_mecano'
+      });
+      dutiesCreated++;
+    });
+
+    return {
+      matched, unmatched, dutiesCreated, errors,
+      unmatchedNames: [...unmatchedNames]
+    };
+  }
+
+  // ===== IMPORT: BL PAYMENTS =====
+
+  importBLPayments(rows) {
+    let imported = 0, errors = [];
+
+    rows.forEach((row, i) => {
+      try {
+        const emp = this.findEmployeeByTz(row.tz);
+        if (!emp) {
+          errors.push(`Row ${i + 1}: employee TZ ${row.tz} not found`);
+          return;
+        }
+
+        // Try to match to a duty period
+        let dutyId = null;
+        if (row.start_date) {
+          const duty = this.data.duties.find(d =>
+            d.employee_id === emp.id && d.start_date === row.start_date
+          );
+          if (duty) dutyId = duty.id;
+        }
+
+        this.addBLPayment({
+          employee_id: emp.id,
+          duty_id: dutyId,
+          start_date: row.start_date || '',
+          end_date: row.end_date || '',
+          payment_type: row.payment_type || 'regular',
+          tagmul: row.tagmul || 0,
+          compensation_20: row.compensation_20 || 0,
+          supplement_40: row.supplement_40 || 0,
+          total_to_employee: row.total_to_employee || 0,
+          batch_number: row.batch_number || '',
+          payment_date: row.payment_date || '',
+          source_file: row.source_file || ''
+        });
+        imported++;
+      } catch (err) {
+        errors.push(`Row ${i + 1}: ${err.message}`);
+      }
+    });
+
+    return { imported, errors };
   }
 
   // ===== RESET =====
 
+  isEmpty() {
+    return this.data.employees.length === 0;
+  }
+
   reset() {
     this.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    this._save();
+  }
+
+  // Bulk load (for seed)
+  bulkLoad(data) {
+    if (data.employees) this.data.employees = data.employees;
+    if (data.salary_history) this.data.salary_history = data.salary_history;
+    if (data.duties) this.data.duties = data.duties;
+    if (data.bl_payments) this.data.bl_payments = data.bl_payments;
+    if (data.payment_batches) this.data.payment_batches = data.payment_batches;
     this._save();
   }
 }

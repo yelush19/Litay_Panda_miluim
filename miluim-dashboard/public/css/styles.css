@@ -659,3 +659,38 @@ input:focus, select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== IMPORT TYPES ===== */
+.import-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.import-option p {
+  color: var(--medium);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.info-note {
+  font-size: 0.85rem;
+  color: var(--info);
+  font-weight: 500;
+}
+
+.import-option .upload-box {
+  padding: 1.5rem;
+  margin-bottom: 0;
+}
+
+/* ===== NOTES CELL ===== */
+.notes-cell {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--medium);
+}
