@@ -1,0 +1,308 @@
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const DB_FILE = join(__dirname, 'miluim-data.json');
+
+// מבנה נתונים ברירת מחדל
+const defaultData = {
+  employees: [],
+  reserve_duty: [],
+  payments: []
+};
+
+// טעינת נתונים
+function loadData() {
+  if (!existsSync(DB_FILE)) {
+    saveData(defaultData);
+    return defaultData;
+  }
+  
+  try {
+    const data = readFileSync(DB_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading data:', error);
+    return defaultData;
+  }
+}
+
+// שמירת נתונים
+function saveData(data) {
+  try {
+    writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Error saving data:', error);
+  }
+}
+
+// פונקציות עזר
+function generateId(data, table) {
+  const items = data[table] || [];
+  if (items.length === 0) return 1;
+  return Math.max(...items.map(item => item.id)) + 1;
+}
+
+// ממשק דמוי SQLite
+const db = {
+  data: loadData(),
+  
+  prepare(sql) {
+    return {
+      all(...params) {
+        // קריאת נתונים
+        const data = loadData();
+        
+        if (sql.includes('FROM employees')) {
+          if (sql.includes('LEFT JOIN reserve_duty')) {
+            // Query עם JOIN
+            return data.employees.map(emp => {
+              const duties = data.reserve_duty.filter(d => d.employee_id === emp.id);
+              const total_days = duties.reduce((sum, d) => sum + d.days, 0);
+              return {
+                ...emp,
+                total_days,
+                expected_amount: total_days * (emp.daily_rate || 0)
+              };
+            });
+          }
+          return data.employees;
+        }
+        
+        if (sql.includes('FROM reserve_duty')) {
+          return data.reserve_duty;
+        }
+        
+        if (sql.includes('FROM payments')) {
+          if (sql.includes('JOIN employees')) {
+            return data.payments.map(payment => {
+              const employee = data.employees.find(e => e.id === payment.employee_id);
+              return {
+                ...payment,
+                employee_name: employee ? employee.name : 'Unknown'
+              };
+            });
+          }
+          return data.payments;
+        }
+        
+        if (sql.includes('COUNT(*)')) {
+          if (sql.includes('employees')) return [{ count: data.employees.length }];
+          if (sql.includes('payments')) {
+            const pending = data.payments.filter(p => p.status !== 'paid');
+            return [{ count: pending.length }];
+          }
+        }
+        
+        if (sql.includes('SUM(days)')) {
+          const total = data.reserve_duty.reduce((sum, d) => sum + d.days, 0);
+          return [{ count: total }];
+        }
+        
+        if (sql.includes('SUM(difference)')) {
+          const total = data.payments
+            .filter(p => p.status !== 'paid')
+            .reduce((sum, p) => sum + (p.difference || 0), 0);
+          return [{ amount: total }];
+        }
+        
+        if (sql.includes('DISTINCT strftime')) {
+          const months = new Set(data.reserve_duty.map(d => {
+            const date = new Date(d.duty_date);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          }));
+          return Array.from(months).sort().reverse().map(m => ({ month: m }));
+        }
+        
+        // דוח חודשי
+        if (sql.includes('strftime') && params[0]) {
+          const month = params[0];
+          const monthlyDuties = data.reserve_duty.filter(d => {
+            const date = new Date(d.duty_date);
+            const dutyMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            return dutyMonth === month;
+          });
+          
+          const employeeMap = new Map();
+          monthlyDuties.forEach(duty => {
+            if (!employeeMap.has(duty.employee_id)) {
+              const emp = data.employees.find(e => e.id === duty.employee_id);
+              if (emp) {
+                employeeMap.set(duty.employee_id, {
+                  id: emp.id,
+                  name: emp.name,
+                  department: emp.department,
+                  daily_rate: emp.daily_rate,
+                  dates: [],
+                  total_days: 0
+                });
+              }
+            }
+            const empData = employeeMap.get(duty.employee_id);
+            if (empData) {
+              empData.dates.push(new Date(duty.duty_date));
+              empData.total_days += duty.days;
+            }
+          });
+          
+          return Array.from(employeeMap.values()).map(emp => ({
+            ...emp,
+            start_date: new Date(Math.min(...emp.dates)).toISOString().split('T')[0],
+            end_date: new Date(Math.max(...emp.dates)).toISOString().split('T')[0],
+            work_days: emp.total_days,
+            expected_amount: emp.total_days * (emp.daily_rate || 0)
+          }));
+        }
+        
+        return [];
+      },
+      
+      get(...params) {
+        // קריאת נתונים
+        const data = loadData();
+        
+        // SELECT id FROM employees WHERE name = ?
+        if (sql.includes('SELECT id FROM employees WHERE name')) {
+          const name = params[0];
+          const employee = data.employees.find(e => e.name === name);
+          return employee ? { id: employee.id } : null;
+        }
+        
+        // For other queries, use all() and return first result
+        const results = this.all(...params);
+        return results.length > 0 ? results[0] : null;
+      },
+      
+      run(...params) {
+        const data = loadData();
+        
+        if (sql.includes('INSERT') && sql.includes('employees')) {
+          // בדיקה אם עובד כבר קיים (לפי שם)
+          const existingEmployee = data.employees.find(e => e.name === params[0]);
+          
+          if (sql.includes('OR IGNORE') && existingEmployee) {
+            // אם העובד קיים ויש OR IGNORE, לא נוסיף
+            return { lastInsertRowid: existingEmployee.id, changes: 0 };
+          }
+          
+          if (existingEmployee && !sql.includes('OR IGNORE')) {
+            // אם העובד קיים ואין OR IGNORE, נעדכן
+            existingEmployee.name = params[0];
+            if (params.length > 1) existingEmployee.id_number = params[1];
+            if (params.length > 2) existingEmployee.department = params[1]; // params[1] is department for kano import
+            if (params.length > 3) existingEmployee.daily_rate = params[2] || 0;
+            saveData(data);
+            return { lastInsertRowid: existingEmployee.id, changes: 1 };
+          }
+          
+          // הוספת עובד חדש
+          const id = data.employees.length > 0 ? Math.max(...data.employees.map(e => e.id)) + 1 : 1;
+          const newEmployee = {
+            id,
+            name: params[0],
+            id_number: params.length >= 4 ? params[1] : null,
+            department: params.length === 3 ? params[1] : (params.length >= 4 ? params[2] : null),
+            daily_rate: params.length === 3 ? (params[2] || 0) : (params.length >= 4 ? (params[3] || 0) : 0),
+            created_at: new Date().toISOString()
+          };
+          data.employees.push(newEmployee);
+          saveData(data);
+          return { lastInsertRowid: id, changes: 1 };
+        }
+        
+        if (sql.includes('INSERT INTO reserve_duty')) {
+          const data = loadData();
+          const id = generateId(data, 'reserve_duty');
+          const newDuty = {
+            id,
+            employee_id: params[0],
+            duty_date: params[1],
+            department: params[2],
+            days: params[3] || 1,
+            created_at: new Date().toISOString()
+          };
+          data.reserve_duty.push(newDuty);
+          saveData(data);
+          return { lastInsertRowid: id, changes: 1 };
+        }
+        
+        if (sql.includes('INSERT INTO payments')) {
+          const data = loadData();
+          const id = generateId(data, 'payments');
+          const newPayment = {
+            id,
+            employee_id: params[0],
+            month: params[1],
+            expected_amount: params[2],
+            received_amount: params[3],
+            difference: params[4],
+            payment_date: params[5],
+            status: params[6],
+            notes: params[7],
+            created_at: new Date().toISOString()
+          };
+          data.payments.push(newPayment);
+          saveData(data);
+          return { lastInsertRowid: id, changes: 1 };
+        }
+        
+        if (sql.includes('UPDATE employees')) {
+          const empIndex = data.employees.findIndex(e => e.id === params[4]);
+          if (empIndex !== -1) {
+            data.employees[empIndex] = {
+              ...data.employees[empIndex],
+              name: params[0],
+              id_number: params[1],
+              department: params[2],
+              daily_rate: params[3]
+            };
+            saveData(data);
+            return { changes: 1 };
+          }
+        }
+        
+        if (sql.includes('DELETE FROM employees')) {
+          const initialLength = data.employees.length;
+          data.employees = data.employees.filter(e => e.id !== params[0]);
+          saveData(data);
+          return { changes: initialLength - data.employees.length };
+        }
+        
+        if (sql.includes('DELETE FROM reserve_duty')) {
+          const initialLength = data.reserve_duty.length;
+          data.reserve_duty = data.reserve_duty.filter(d => d.employee_id !== params[0]);
+          saveData(data);
+          return { changes: initialLength - data.reserve_duty.length };
+        }
+        
+        if (sql.includes('DELETE FROM payments')) {
+          const initialLength = data.payments.length;
+          data.payments = data.payments.filter(p => p.employee_id !== params[0]);
+          saveData(data);
+          return { changes: initialLength - data.payments.length };
+        }
+        
+        return { changes: 0 };
+      }
+    };
+  },
+  
+  exec(sql) {
+    // אתחול טבלאות - לא צריך ב-JSON
+    console.log('✅ JSON database initialized!');
+  },
+  
+  transaction(fn) {
+    return (data) => {
+      fn(data);
+    };
+  }
+};
+
+console.log('✅ JSON-based database ready!');
+console.log('📁 Data file:', DB_FILE);
+
+export default db;

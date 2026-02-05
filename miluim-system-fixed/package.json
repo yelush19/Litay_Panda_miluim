@@ -1,0 +1,18 @@
+{
+  "name": "miluim-system",
+  "version": "1.0.1",
+  "description": "מערכת ניהול תשלומי מילואים - ליטאי ניהול שירותים",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "keywords": ["miluim", "litay", "reserve-duty"],
+  "author": "Litay Services",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "xlsx": "^0.18.5"
+  }
+}

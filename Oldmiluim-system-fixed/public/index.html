@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת ניהול תשלומי מילואים - ליטאי</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <!-- כותרת -->
+    <div class="header">
+        <div class="header-content">
+            <div>
+                <h1>🎖️ מערכת ניהול תשלומי מילואים</h1>
+                <p>ליטאי ניהול שירותים | Innovation in Balance</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- מיכל ראשי -->
+    <div class="container">
+        <!-- הודעות -->
+        <div id="message" class="message"></div>
+
+        <!-- טאבים -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('dashboard')">🏠 דשבורד</button>
+            <button class="tab" onclick="showTab('employees')">👥 ניהול עובדים</button>
+            <button class="tab" onclick="showTab('monthly')">📊 דוח חודשי</button>
+            <button class="tab" onclick="showTab('payments')">💰 תשלומים והפרשים</button>
+        </div>
+
+        <!-- טאב דשבורד -->
+        <div id="tab-dashboard" class="tab-content">
+            <!-- סטטיסטיקות -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">סה"כ עובדים</div>
+                    <div class="stat-value" id="stat-employees">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">סה"כ ימי מילואים</div>
+                    <div class="stat-value" id="stat-days">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">ממתינים לתשלום</div>
+                    <div class="stat-value" id="stat-pending">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">סה"כ לתשלום</div>
+                    <div class="stat-value" id="stat-amount">₪0</div>
+                </div>
+            </div>
+
+            <!-- ייבוא קובץ -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">ייבוא קובץ מקאנו</h2>
+                </div>
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-zone-icon">📁</div>
+                    <div class="drop-zone-text">גרור קובץ Excel לכאן</div>
+                    <div class="drop-zone-hint">או לחץ לבחירת קובץ (.xlsx, .xls)</div>
+                    <input type="file" id="file-input" accept=".xlsx,.xls" style="display: none;">
+                </div>
+            </div>
+
+            <!-- עובדים אחרונים -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">עובדים עם מילואים</h2>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>שם עובד</th>
+                                <th>מחלקה</th>
+                                <th>סה"כ ימים</th>
+                                <th>סכום צפוי</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboard-employees">
+                            <tr>
+                                <td colspan="4" class="empty-state">
+                                    <div class="empty-state-icon">📋</div>
+                                    <div class="empty-state-text">אין נתונים להצגה</div>
+                                    <div class="empty-state-hint">ייבא קובץ מקאנו להתחלה</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- טאב ניהול עובדים -->
+        <div id="tab-employees" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">רשימת עובדים</h2>
+                    <button class="btn btn-primary" onclick="openAddEmployeeModal()">
+                        ➕ הוסף עובד חדש
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>שם עובד</th>
+                                <th>תעודת זהות</th>
+                                <th>מחלקה</th>
+                                <th>תעריף יומי</th>
+                                <th>סה"כ ימים</th>
+                                <th>סכום צפוי</th>
+                                <th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employees-table">
+                            <tr>
+                                <td colspan="7" class="empty-state">
+                                    <div class="empty-state-icon">👥</div>
+                                    <div class="empty-state-text">אין עובדים במערכת</div>
+                                    <div class="empty-state-hint">ייבא קובץ או הוסף עובדים ידנית</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- טאב דוח חודשי -->
+        <div id="tab-monthly" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">דוח חודשי לביטוח לאומי</h2>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <select id="month-select" class="form-select" style="width: 200px; margin: 0;" onchange="loadMonthlyReport()">
+                            <option value="">בחר חודש</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="exportMonthlyToPDF()">
+                            📄 יצוא לPDF
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>שם עובד</th>
+                                <th>מ-תאריך</th>
+                                <th>עד-תאריך</th>
+                                <th>סה"כ ימים</th>
+                                <th>ימי עבודה</th>
+                                <th>תעריף יומי</th>
+                                <th>סכום צפוי</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthly-table">
+                            <tr>
+                                <td colspan="7" class="empty-state">
+                                    <div class="empty-state-icon">📊</div>
+                                    <div class="empty-state-text">בחר חודש לצפייה בדוח</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot id="monthly-footer" style="display: none;">
+                            <tr style="background: var(--primary-green-light); font-weight: 600;">
+                                <td colspan="6" style="text-align: left; padding: 16px;">סה"כ:</td>
+                                <td id="monthly-total" style="padding: 16px;">₪0</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- טאב תשלומים -->
+        <div id="tab-payments" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">תשלומים והפרשים</h2>
+                    <button class="btn btn-primary" onclick="openAddPaymentModal()">
+                        ➕ הוסף תשלום מביטוח לאומי
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>שם עובד</th>
+                                <th>חודש</th>
+                                <th>סכום צפוי</th>
+                                <th>סכום התקבל</th>
+                                <th>הפרש</th>
+                                <th>סטטוס</th>
+                                <th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payments-table">
+                            <tr>
+                                <td colspan="7" class="empty-state">
+                                    <div class="empty-state-icon">💰</div>
+                                    <div class="empty-state-text">אין תשלומים מעודכנים</div>
+                                    <div class="empty-state-hint">הוסף תשלומים שהתקבלו מביטוח לאומי</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- מודאל הוספת עובד -->
+    <div id="employee-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ הוספת עובד חדש</h3>
+                <button class="modal-close" onclick="closeModal('employee-modal')">×</button>
+            </div>
+            <form id="employee-form" onsubmit="saveEmployee(event)">
+                <div class="form-group">
+                    <label class="form-label">שם מלא *</label>
+                    <input type="text" class="form-input" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">תעודת זהות</label>
+                    <input type="text" class="form-input" name="id_number" maxlength="9">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">מחלקה</label>
+                    <input type="text" class="form-input" name="department">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">תעריף יומי (₪)</label>
+                    <input type="number" class="form-input" name="daily_rate" step="0.01" min="0">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('employee-modal')">ביטול</button>
+                    <button type="submit" class="btn btn-primary">💾 שמור</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- מודאל הוספת תשלום -->
+    <div id="payment-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">💰 עדכון תשלום מביטוח לאומי</h3>
+                <button class="modal-close" onclick="closeModal('payment-modal')">×</button>
+            </div>
+            <form id="payment-form" onsubmit="savePayment(event)">
+                <div class="form-group">
+                    <label class="form-label">עובד *</label>
+                    <select class="form-select" name="employee_id" id="payment-employee" required>
+                        <option value="">בחר עובד</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">חודש *</label>
+                    <select class="form-select" name="month" id="payment-month" required>
+                        <option value="">בחר חודש</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">סכום שהתקבל (₪) *</label>
+                    <input type="number" class="form-input" name="received_amount" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">תאריך קבלה</label>
+                    <input type="date" class="form-input" name="payment_date">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">הערות</label>
+                    <textarea class="form-input" name="notes" rows="3"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('payment-modal')">ביטול</button>
+                    <button type="submit" class="btn btn-primary">💾 שמור ועדכן</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript ספריות -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- JavaScript ראשי -->
+    <script src="/js/app.js"></script>
+</body>
+</html>

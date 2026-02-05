@@ -1,0 +1,23 @@
+{
+  "name": "miluim-system",
+  "version": "1.0.1",
+  "description": "מערכת ניהול תשלומי מילואים - ליטאי (גרסה מתוקנת)",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js"
+  },
+  "keywords": [
+    "reserve",
+    "duty",
+    "payments",
+    "litay"
+  ],
+  "author": "Litay Services",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
