@@ -10,17 +10,19 @@
 <body>
     <!-- כותרת ראשית -->
     <header class="header">
-        <h1>🎖️ מערכת ניהול תשלומי מילואים</h1>
+        <h1>מערכת ניהול תשלומי מילואים</h1>
         <p>Innovation in Balance | ליטאי ניהול שירותים</p>
     </header>
 
     <!-- טאבים -->
     <nav class="tabs">
-        <button class="tab active" onclick="switchTab('dashboard')">🏠 דשבורד</button>
-        <button class="tab" onclick="switchTab('import')">📥 ייבוא קאנו</button>
-        <button class="tab" onclick="switchTab('employees')">👥 עובדים</button>
-        <button class="tab" onclick="switchTab('monthly')">📊 דוח חודשי</button>
-        <button class="tab" onclick="switchTab('payments')">💰 תשלומים</button>
+        <button class="tab active" data-tab="dashboard">דשבורד</button>
+        <button class="tab" data-tab="import">ייבוא קאנו</button>
+        <button class="tab" data-tab="employees">עובדים</button>
+        <button class="tab" data-tab="monthly">דוח חודשי</button>
+        <button class="tab" data-tab="daily">דוח יומי</button>
+        <button class="tab" data-tab="payments">תשלומים</button>
+        <button class="tab" data-tab="reports">דוחות ומעקב</button>
     </nav>
 
     <!-- תוכן -->
@@ -29,28 +31,32 @@
         <div id="dashboard" class="tab-content active">
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="icon">👥</div>
                     <h3>סה"כ עובדים</h3>
                     <div class="value" id="totalEmployees">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="icon">📅</div>
                     <h3>סה"כ ימי שירות</h3>
                     <div class="value" id="totalDays">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="icon">📊</div>
                     <h3>ממוצע ימים לעובד</h3>
                     <div class="value" id="avgDays">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="icon">⏳</div>
-                    <h3>תשלומים ממתינים</h3>
-                    <div class="value" id="pendingPayments">0</div>
+                    <h3>סכום צפוי</h3>
+                    <div class="value" id="totalExpected">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>סכום שהתקבל</h3>
+                    <div class="value" id="totalReceived">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>הפרש לגבייה</h3>
+                    <div class="value" id="totalDifference">0</div>
                 </div>
             </div>
 
-            <div style="background: white; padding: 2rem; border-radius: 8px; margin-top: 2rem; text-align: center;">
+            <div class="card" style="text-align: center;">
                 <h2 style="color: var(--primary-green-dark); margin-bottom: 1rem;">ברוכים הבאים למערכת</h2>
                 <p style="color: var(--neutral-medium); font-size: 1.1rem;">
                     התחל בייבוא קובץ מקאנו או עבור לאחד מהטאבים למעלה
@@ -60,31 +66,31 @@
 
         <!-- ייבוא קאנו -->
         <div id="import" class="tab-content">
-            <h2 style="color: var(--primary-green-dark); margin-bottom: 1.5rem;">ייבוא קובץ מקאנו</h2>
-            
-            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-                <div class="icon">📁</div>
+            <h2 class="section-title">ייבוא קובץ מקאנו</h2>
+
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">+</div>
                 <p>גרור קובץ Excel לכאן או לחץ לבחירה</p>
                 <small>תומך בפורמטים: .xlsx, .xls</small>
             </div>
-            
+
             <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
-            
-            <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-top: 2rem; border-right: 4px solid var(--status-info);">
-                <h3 style="color: var(--primary-green-dark); margin-bottom: 1rem;">📋 הנחיות לייבוא:</h3>
-                <ul style="color: var(--neutral-medium); line-height: 2;">
-                    <li>הקובץ חייב להכיל את העמודות: ת.ז., שם פרטי, שם משפחה, תאריך, ימים</li>
-                    <li>התאריכים יכולים להיות בפורמט: dd.mm.yyyy או mm/dd/yyyy</li>
+
+            <div class="card" style="border-right: 4px solid var(--primary-green); margin-top: 2rem;">
+                <h3 style="color: var(--primary-green-dark); margin-bottom: 1rem;">הנחיות לייבוא:</h3>
+                <ul style="color: var(--neutral-medium); line-height: 2; padding-right: 1.5rem;">
+                    <li>הקובץ יכול להכיל עמודות: שם עובד / ת.ז. / שם פרטי + שם משפחה / תאריך / ימים / מחלקה</li>
+                    <li>התאריכים יכולים להיות בפורמט: dd.mm.yyyy או mm/dd/yyyy או תאריכי Excel</li>
                     <li>המערכת תזהה אוטומטית עובדים קיימים ותמזג נתונים</li>
-                    <li>בדוק את הנתונים אחרי הייבוא בטאב "עובדים"</li>
+                    <li>אם אין עמודת "מילואים" - כל השורות ייחשבו כמילואים</li>
                 </ul>
             </div>
         </div>
 
         <!-- עובדים -->
         <div id="employees" class="tab-content">
-            <h2 style="color: var(--primary-green-dark); margin-bottom: 1.5rem;">👥 עובדים עם מילואים</h2>
-            
+            <h2 class="section-title">עובדים עם מילואים</h2>
+
             <div class="table-container">
                 <table>
                     <thead>
@@ -94,11 +100,12 @@
                             <th>סה"כ ימים</th>
                             <th>ת.ז.</th>
                             <th>תעריף יומי</th>
+                            <th>פעולות</th>
                         </tr>
                     </thead>
                     <tbody id="employeesTableBody">
                         <tr>
-                            <td colspan="5" style="text-align: center; padding: 2rem;">
+                            <td colspan="6" style="text-align: center; padding: 2rem;">
                                 <div class="loading">
                                     <div class="spinner"></div>
                                     טוען נתונים...
@@ -112,15 +119,17 @@
 
         <!-- דוח חודשי -->
         <div id="monthly" class="tab-content">
-            <h2 style="color: var(--primary-green-dark); margin-bottom: 1.5rem;">📊 דוח חודשי</h2>
-            
-            <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: var(--neutral-dark); font-weight: 500;">בחר חודש:</label>
-                <select id="monthSelect" onchange="loadMonthlyReport()" style="width: 300px;">
-                    <option value="">בחר חודש...</option>
-                </select>
+            <h2 class="section-title">דוח חודשי</h2>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>בחר חודש:</label>
+                    <select id="monthSelect">
+                        <option value="">בחר חודש...</option>
+                    </select>
+                </div>
             </div>
-            
+
             <div class="table-container">
                 <table>
                     <thead>
@@ -128,14 +137,55 @@
                             <th>תאריך</th>
                             <th>שם עובד</th>
                             <th>ת.ז.</th>
+                            <th>מחלקה</th>
                             <th>ימים</th>
                             <th>סכום צפוי</th>
                         </tr>
                     </thead>
                     <tbody id="monthlyReportBody">
                         <tr>
-                            <td colspan="5" style="text-align: center; padding: 2rem; color: var(--neutral-medium);">
+                            <td colspan="6" class="empty-cell">
                                 בחר חודש כדי להציג את הדוח
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- דוח יומי -->
+        <div id="daily" class="tab-content">
+            <h2 class="section-title">דוח יומי מפורט</h2>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>מתאריך:</label>
+                    <input type="date" id="dailyFrom">
+                </div>
+                <div class="filter-group">
+                    <label>עד תאריך:</label>
+                    <input type="date" id="dailyTo">
+                </div>
+                <button class="btn btn-primary" onclick="loadDailyReport()">הצג דוח</button>
+                <button class="btn btn-secondary" onclick="clearDailyFilters()">נקה</button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>תאריך</th>
+                            <th>שם עובד</th>
+                            <th>מחלקה</th>
+                            <th>ימים</th>
+                            <th>תעריף</th>
+                            <th>סכום</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyReportBody">
+                        <tr>
+                            <td colspan="6" class="empty-cell">
+                                לחץ "הצג דוח" כדי לראות את הנתונים
                             </td>
                         </tr>
                     </tbody>
@@ -145,18 +195,149 @@
 
         <!-- תשלומים -->
         <div id="payments" class="tab-content">
-            <h2 style="color: var(--primary-green-dark); margin-bottom: 1.5rem;">💰 ניהול תשלומים</h2>
-            
-            <div style="background: white; padding: 2rem; border-radius: 8px; text-align: center;">
-                <div class="icon" style="font-size: 4rem; margin-bottom: 1rem;">🚧</div>
-                <h3 style="color: var(--neutral-dark); margin-bottom: 0.5rem;">בקרוב...</h3>
-                <p style="color: var(--neutral-medium);">
-                    מודול ניהול תשלומים וייבוא קבצי XLA מביטוח לאומי<br>
-                    יהיה זמין בגרסה הבאה
-                </p>
+            <h2 class="section-title">ניהול תשלומים</h2>
+
+            <div class="filter-bar">
+                <button class="btn btn-primary" onclick="showAddPaymentModal()">+ הוסף תשלום</button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>תאריך תשלום</th>
+                            <th>שם עובד</th>
+                            <th>חודש</th>
+                            <th>סכום</th>
+                            <th>אסמכתא</th>
+                            <th>הערות</th>
+                            <th>סטטוס</th>
+                            <th>פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paymentsTableBody">
+                        <tr>
+                            <td colspan="8" class="empty-cell">
+                                אין תשלומים רשומים. לחץ "+ הוסף תשלום" להתחיל.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- דוחות ומעקב -->
+        <div id="reports" class="tab-content">
+            <h2 class="section-title">דוחות ומעקב</h2>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>עובד:</label>
+                    <select id="reportEmployee">
+                        <option value="">כל העובדים</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>מחלקה:</label>
+                    <select id="reportDepartment">
+                        <option value="">כל המחלקות</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>סטטוס:</label>
+                    <select id="reportStatus">
+                        <option value="">הכל</option>
+                        <option value="paid">שולם</option>
+                        <option value="partial">שולם חלקית</option>
+                        <option value="pending">ממתין</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="loadComprehensiveReport()">הצג דוח</button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>שם עובד</th>
+                            <th>ת.ז.</th>
+                            <th>מחלקה</th>
+                            <th>ימים</th>
+                            <th>סכום צפוי</th>
+                            <th>סכום שהתקבל</th>
+                            <th>הפרש</th>
+                            <th>סטטוס</th>
+                            <th>פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="comprehensiveReportBody">
+                        <tr>
+                            <td colspan="9" class="empty-cell">
+                                לחץ "הצג דוח" כדי לראות את הנתונים
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </main>
+
+    <!-- מודאל הוספת תשלום -->
+    <div id="paymentModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>הוספת תשלום חדש</h3>
+                <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>עובד: *</label>
+                    <select id="paymentEmployee" required>
+                        <option value="">בחר עובד...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>חודש (YYYY-MM):</label>
+                    <input type="month" id="paymentMonth">
+                </div>
+                <div class="form-group">
+                    <label>סכום: *</label>
+                    <input type="number" id="paymentAmount" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label>תאריך תשלום: *</label>
+                    <input type="date" id="paymentDate">
+                </div>
+                <div class="form-group">
+                    <label>אסמכתא:</label>
+                    <input type="text" id="paymentReference" placeholder="מספר אסמכתא">
+                </div>
+                <div class="form-group">
+                    <label>הערות:</label>
+                    <input type="text" id="paymentNotes" placeholder="הערה לתשלום">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="savePayment()">שמור</button>
+                <button class="btn btn-secondary" onclick="closePaymentModal()">ביטול</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- מודאל פרטי עובד -->
+    <div id="employeeModal" class="modal" style="display: none;">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 id="employeeModalTitle">פרטי עובד</h3>
+                <button class="modal-close" onclick="closeEmployeeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="employeeModalBody">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEmployeeModal()">סגור</button>
+            </div>
+        </div>
+    </div>
 
     <script src="js/app.js"></script>
 </body>
