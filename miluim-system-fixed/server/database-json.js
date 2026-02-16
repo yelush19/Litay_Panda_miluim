@@ -1,7 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'miluim-data.json');
+// On Vercel, filesystem is read-only except /tmp
+const isVercel = process.env.VERCEL === '1';
+const DB_FILE = isVercel
+  ? path.join('/tmp', 'miluim-data.json')
+  : path.join(__dirname, 'miluim-data.json');
+
+// On Vercel, copy initial data to /tmp if it doesn't exist yet
+if (isVercel && !fs.existsSync(DB_FILE)) {
+  const srcFile = path.join(__dirname, 'miluim-data.json');
+  if (fs.existsSync(srcFile)) {
+    fs.copyFileSync(srcFile, DB_FILE);
+  }
+}
 
 class JSONDatabase {
   constructor() {
@@ -70,7 +82,6 @@ class JSONDatabase {
   addEmployee(employee) {
     const existing = this.data.employees.find(e => e.tz === employee.tz);
     if (existing) {
-      // Update existing employee if new data is more complete
       if (employee.department && !existing.department) existing.department = employee.department;
       if (employee.daily_rate && existing.daily_rate === 500) existing.daily_rate = employee.daily_rate;
       this.saveData();
@@ -104,7 +115,6 @@ class JSONDatabase {
     const index = this.data.employees.findIndex(e => e.id === id);
     if (index === -1) return false;
     this.data.employees.splice(index, 1);
-    // Also delete related reserve_duty and payments
     this.data.reserve_duty = this.data.reserve_duty.filter(d => d.employee_id !== id);
     this.data.payments = this.data.payments.filter(p => p.employee_id !== id);
     this.saveData();
@@ -218,7 +228,6 @@ class JSONDatabase {
     let duties = this.data.reserve_duty;
     if (dateFrom) duties = duties.filter(d => d.duty_date >= dateFrom);
     if (dateTo) duties = duties.filter(d => d.duty_date <= dateTo);
-
     duties.sort((a, b) => a.duty_date.localeCompare(b.duty_date));
 
     return duties.map(duty => {
@@ -309,16 +318,12 @@ class JSONDatabase {
         }
       },
       get: function(...params) {
-        if (sql.includes('COUNT(*)') && sql.includes('FROM employees')) {
-          return { count: self.data.employees.length };
-        }
+        if (sql.includes('COUNT(*)') && sql.includes('FROM employees')) return { count: self.data.employees.length };
         if (sql.includes('SUM(days)') && sql.includes('FROM reserve_duty')) {
-          const totalDays = self.data.reserve_duty.reduce((sum, d) => sum + (d.days || 0), 0);
-          return { count: totalDays };
+          return { count: self.data.reserve_duty.reduce((sum, d) => sum + (d.days || 0), 0) };
         }
         if (sql.includes('COUNT(*)') && sql.includes('FROM payments')) {
-          const pending = self.data.payments.filter(p => p.status !== 'paid').length;
-          return { count: pending };
+          return { count: self.data.payments.filter(p => p.status !== 'paid').length };
         }
         if (sql.includes('SELECT id FROM employees WHERE tz = ?')) {
           const [tz] = params;
